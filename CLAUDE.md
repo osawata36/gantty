@@ -37,3 +37,8 @@ This is a new project. Build commands, test commands, and architecture documenta
 
 - 機能の仕様を正しく理解してからテストを書くこと
 - 不明な点があれば、仮の実装ではなく、ユーザーに確認すること
+
+## Git Commit Rules
+
+- まとまった作業が終わるたびに、適切にコミットする
+- コミットは [Conventional Commits](https://www.conventionalcommits.org/ja/v1.0.0/) のプラクティスに準拠して作成する
