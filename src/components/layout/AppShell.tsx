@@ -2,10 +2,12 @@ import { cn } from "@/lib/utils";
 
 interface AppShellProps {
   children: React.ReactNode;
+  toolbar?: React.ReactNode;
+  statusBar?: React.ReactNode;
   className?: string;
 }
 
-export function AppShell({ children, className }: AppShellProps) {
+export function AppShell({ children, toolbar, statusBar, className }: AppShellProps) {
   return (
     <div className={cn("flex h-screen flex-col", className)}>
       {/* Header */}
@@ -14,8 +16,8 @@ export function AppShell({ children, className }: AppShellProps) {
       </header>
 
       {/* Toolbar */}
-      <div role="toolbar" className="flex h-10 items-center border-b px-4">
-        {/* Toolbar content will be added later */}
+      <div role="toolbar" className="flex h-10 items-center gap-2 border-b px-4">
+        {toolbar}
       </div>
 
       {/* Main Content */}
@@ -25,7 +27,7 @@ export function AppShell({ children, className }: AppShellProps) {
 
       {/* Status Bar */}
       <footer role="contentinfo" className="flex h-6 items-center border-t px-4 text-xs">
-        <span>Ready</span>
+        {statusBar ?? <span>Ready</span>}
       </footer>
     </div>
   );

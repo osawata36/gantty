@@ -103,4 +103,171 @@ describe("projectStore", () => {
       expect(state.isModified).toBe(false);
     });
   });
+
+  describe("task management", () => {
+    beforeEach(() => {
+      useProjectStore.getState().createNewProject("Test Project");
+    });
+
+    describe("addTask", () => {
+      it("adds a new task to the project", () => {
+        const { addTask } = useProjectStore.getState();
+        addTask("First Task");
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks).toHaveLength(1);
+        expect(state.project?.tasks[0].name).toBe("First Task");
+      });
+
+      it("assigns unique id to each task", () => {
+        const { addTask } = useProjectStore.getState();
+        addTask("Task 1");
+        addTask("Task 2");
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks[0].id).not.toBe(state.project?.tasks[1].id);
+      });
+
+      it("sets default values for new task", () => {
+        const { addTask } = useProjectStore.getState();
+        addTask("New Task");
+
+        const state = useProjectStore.getState();
+        const task = state.project?.tasks[0];
+        expect(task?.progress).toBe(0);
+        expect(task?.status).toBe("not_started");
+        expect(task?.order).toBe(0);
+      });
+
+      it("increments order for subsequent tasks", () => {
+        const { addTask } = useProjectStore.getState();
+        addTask("Task 1");
+        addTask("Task 2");
+        addTask("Task 3");
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks[0].order).toBe(0);
+        expect(state.project?.tasks[1].order).toBe(1);
+        expect(state.project?.tasks[2].order).toBe(2);
+      });
+
+      it("marks project as modified", () => {
+        const { addTask } = useProjectStore.getState();
+        addTask("New Task");
+
+        const state = useProjectStore.getState();
+        expect(state.isModified).toBe(true);
+      });
+
+      it("does nothing if no project is loaded", () => {
+        useProjectStore.getState().reset();
+        const { addTask } = useProjectStore.getState();
+        addTask("New Task");
+
+        const state = useProjectStore.getState();
+        expect(state.project).toBeNull();
+      });
+    });
+
+    describe("updateTask", () => {
+      it("updates task name", () => {
+        const { addTask, updateTask } = useProjectStore.getState();
+        addTask("Original Name");
+
+        const taskId = useProjectStore.getState().project?.tasks[0].id;
+        updateTask(taskId!, { name: "Updated Name" });
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks[0].name).toBe("Updated Name");
+      });
+
+      it("updates task partially without affecting other fields", () => {
+        const { addTask, updateTask } = useProjectStore.getState();
+        addTask("Task Name");
+
+        const taskId = useProjectStore.getState().project?.tasks[0].id;
+        updateTask(taskId!, { progress: 50 });
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks[0].name).toBe("Task Name");
+        expect(state.project?.tasks[0].progress).toBe(50);
+      });
+
+      it("marks project as modified", () => {
+        const { addTask, updateTask, markAsSaved } = useProjectStore.getState();
+        addTask("Task Name");
+        markAsSaved();
+
+        const taskId = useProjectStore.getState().project?.tasks[0].id;
+        updateTask(taskId!, { name: "Updated Name" });
+
+        const state = useProjectStore.getState();
+        expect(state.isModified).toBe(true);
+      });
+
+      it("does nothing if task not found", () => {
+        const { addTask, updateTask, markAsSaved } = useProjectStore.getState();
+        addTask("Task Name");
+        markAsSaved();
+
+        updateTask("non-existent-id", { name: "Updated Name" });
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks[0].name).toBe("Task Name");
+        expect(state.isModified).toBe(false);
+      });
+    });
+
+    describe("deleteTask", () => {
+      it("removes task from project", () => {
+        const { addTask, deleteTask } = useProjectStore.getState();
+        addTask("Task to Delete");
+
+        const taskId = useProjectStore.getState().project?.tasks[0].id;
+        deleteTask(taskId!);
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks).toHaveLength(0);
+      });
+
+      it("only removes specified task", () => {
+        const { addTask, deleteTask } = useProjectStore.getState();
+        addTask("Task 1");
+        addTask("Task 2");
+        addTask("Task 3");
+
+        const taskId = useProjectStore.getState().project?.tasks[1].id;
+        deleteTask(taskId!);
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks).toHaveLength(2);
+        expect(state.project?.tasks[0].name).toBe("Task 1");
+        expect(state.project?.tasks[1].name).toBe("Task 3");
+      });
+
+      it("marks project as modified", () => {
+        const { addTask, deleteTask, markAsSaved } = useProjectStore.getState();
+        addTask("Task to Delete");
+        markAsSaved();
+
+        const taskId = useProjectStore.getState().project?.tasks[0].id;
+        deleteTask(taskId!);
+
+        const state = useProjectStore.getState();
+        expect(state.isModified).toBe(true);
+      });
+
+      it("does nothing if task not found", () => {
+        const { addTask, deleteTask, markAsSaved } = useProjectStore.getState();
+        addTask("Task Name");
+        markAsSaved();
+
+        deleteTask("non-existent-id");
+
+        const state = useProjectStore.getState();
+        expect(state.project?.tasks).toHaveLength(1);
+        expect(state.isModified).toBe(false);
+      });
+    });
+  });
 });
