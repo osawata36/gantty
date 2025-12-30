@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { format, isToday, differenceInDays, getWeek, getQuarter } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ChevronRight, ChevronDown, CalendarDays } from "lucide-react";
+import { ChevronRight, ChevronDown, CalendarDays, Calendar, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/projectStore";
 import { DependencyArrows } from "./DependencyArrows";
@@ -14,7 +14,10 @@ import {
   type ScaleType,
   type DragType,
 } from "@/lib/ganttUtils";
+import { calculateRelativeSchedule } from "@/lib/dependencyScheduler";
 import type { Task, TaskDependency } from "@/types";
+
+type GanttMode = "date" | "relative";
 
 // Empty array constants to avoid creating new array on each render
 const EMPTY_TASKS: Task[] = [];
@@ -53,10 +56,16 @@ export function GanttView() {
   const collapsedTaskIds = useProjectStore((state) => state.collapsedTaskIds);
 
   const [scale, setScale] = useState<ScaleType>("day");
+  const [mode, setMode] = useState<GanttMode>("date");
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+
+  // Calculate relative schedule for relative mode
+  const relativeScheduleResult = useMemo(() => {
+    return calculateRelativeSchedule(tasks, dependencies);
+  }, [tasks, dependencies]);
 
   // Build tree structure
   const treeTasks = useMemo(() => {
@@ -104,13 +113,20 @@ export function GanttView() {
     );
   }, [tasks]);
 
-  // Generate dates for the timeline
+  // Generate dates for the timeline (date mode)
   const dates = useMemo(() => {
     return getDaysInRange(dateRange.startDate, dateRange.endDate);
   }, [dateRange]);
 
-  // Calculate chart width
-  const chartWidth = dates.length * DAY_WIDTH;
+  // Calculate chart width based on mode
+  const chartWidth = mode === "date"
+    ? dates.length * DAY_WIDTH
+    : relativeScheduleResult.totalDays * DAY_WIDTH;
+
+  // Generate relative days array for relative mode
+  const relativeDays = useMemo(() => {
+    return Array.from({ length: relativeScheduleResult.totalDays }, (_, i) => i + 1);
+  }, [relativeScheduleResult.totalDays]);
 
   // Sync scroll between header and chart
   const handleChartScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -278,50 +294,87 @@ export function GanttView() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Scale switcher and navigation */}
+      {/* Mode switcher and navigation */}
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm text-muted-foreground">表示:</span>
+        {/* Mode toggle */}
+        <span className="text-sm text-muted-foreground">モード:</span>
         <Button
           variant="ghost"
           size="sm"
-          className={scale === "day" ? "bg-primary text-primary-foreground" : ""}
-          onClick={() => setScale("day")}
+          className={mode === "date" ? "bg-primary text-primary-foreground" : ""}
+          onClick={() => setMode("date")}
+          title="日付モード"
         >
-          日
+          <Calendar className="h-4 w-4 mr-1" />
+          日付
         </Button>
         <Button
           variant="ghost"
           size="sm"
-          className={scale === "week" ? "bg-primary text-primary-foreground" : ""}
-          onClick={() => setScale("week")}
+          className={mode === "relative" ? "bg-primary text-primary-foreground" : ""}
+          onClick={() => setMode("relative")}
+          title="相対モード（依存関係から自動計算）"
         >
-          週
+          <Hash className="h-4 w-4 mr-1" />
+          相対
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={scale === "month" ? "bg-primary text-primary-foreground" : ""}
-          onClick={() => setScale("month")}
-        >
-          月
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={scale === "quarter" ? "bg-primary text-primary-foreground" : ""}
-          onClick={() => setScale("quarter")}
-        >
-          四
-        </Button>
+
         <div className="h-4 w-px bg-border mx-1" />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={scrollToToday}
-        >
-          <CalendarDays className="h-4 w-4 mr-1" />
-          今日
-        </Button>
+
+        {/* Scale switcher (only in date mode) */}
+        {mode === "date" && (
+          <>
+            <span className="text-sm text-muted-foreground">表示:</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={scale === "day" ? "bg-primary text-primary-foreground" : ""}
+              onClick={() => setScale("day")}
+            >
+              日
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={scale === "week" ? "bg-primary text-primary-foreground" : ""}
+              onClick={() => setScale("week")}
+            >
+              週
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={scale === "month" ? "bg-primary text-primary-foreground" : ""}
+              onClick={() => setScale("month")}
+            >
+              月
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={scale === "quarter" ? "bg-primary text-primary-foreground" : ""}
+              onClick={() => setScale("quarter")}
+            >
+              四
+            </Button>
+            <div className="h-4 w-px bg-border mx-1" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={scrollToToday}
+            >
+              <CalendarDays className="h-4 w-4 mr-1" />
+              今日
+            </Button>
+          </>
+        )}
+
+        {/* Cycle warning in relative mode */}
+        {mode === "relative" && relativeScheduleResult.hasCycle && (
+          <span className="text-sm text-amber-600">
+            ⚠ 循環依存が検出されました
+          </span>
+        )}
       </div>
 
       {/* Main content */}
@@ -384,74 +437,96 @@ export function GanttView() {
             className="h-12 border-b overflow-hidden bg-muted/30"
           >
             <div className="flex" style={{ width: chartWidth }}>
-              {scale === "day" && (
+              {mode === "relative" ? (
                 <>
-                  {/* Month row */}
-                  <div className="absolute flex h-6" style={{ width: chartWidth }}>
-                    {getMonthHeaders(dates, DAY_WIDTH)}
+                  {/* Relative mode: Day 1, Day 2, ... */}
+                  <div className="absolute flex h-6 items-center justify-center text-xs font-medium bg-muted/50" style={{ width: chartWidth }}>
+                    相対日数（依存関係から自動計算）
                   </div>
-                  {/* Day row */}
-                  <div
-                    className="flex h-6 mt-6"
-                    style={{ width: chartWidth }}
-                  >
-                    {dates.map((date, i) => (
+                  <div className="flex h-6 mt-6" style={{ width: chartWidth }}>
+                    {relativeDays.map((day, i) => (
                       <div
                         key={i}
-                        className={`flex items-center justify-center text-xs border-r ${
-                          isToday(date) ? "bg-primary/10 font-bold" : ""
-                        } ${isWeekend(date) ? "bg-muted/50" : ""}`}
+                        className="flex items-center justify-center text-xs border-r"
                         style={{ width: DAY_WIDTH, minWidth: DAY_WIDTH }}
                       >
-                        {format(date, "d")}
+                        {day}
                       </div>
                     ))}
                   </div>
                 </>
-              )}
-              {scale === "week" && (
+              ) : (
                 <>
-                  {/* Month row */}
-                  <div className="absolute flex h-6" style={{ width: chartWidth }}>
-                    {getMonthHeaders(dates, DAY_WIDTH)}
-                  </div>
-                  {/* Week number row */}
-                  <div
-                    className="flex h-6 mt-6"
-                    style={{ width: chartWidth }}
-                  >
-                    {getWeekHeaders(dates, DAY_WIDTH)}
-                  </div>
-                </>
-              )}
-              {scale === "month" && (
-                <>
-                  {/* Year row */}
-                  <div className="absolute flex h-6" style={{ width: chartWidth }}>
-                    {getYearHeaders(dates, DAY_WIDTH)}
-                  </div>
-                  {/* Month row */}
-                  <div
-                    className="flex h-6 mt-6"
-                    style={{ width: chartWidth }}
-                  >
-                    {getMonthOnlyHeaders(dates, DAY_WIDTH)}
-                  </div>
-                </>
-              )}
-              {scale === "quarter" && (
-                <>
-                  {/* Year row */}
-                  <div className="absolute flex h-6" style={{ width: chartWidth }}>
-                    {getYearHeaders(dates, DAY_WIDTH)}
-                  </div>
-                  {/* Quarter row */}
-                  <div
-                    className="flex h-6 mt-6"
-                    style={{ width: chartWidth }}
-                  >
-                    {getQuarterHeaders(dates, DAY_WIDTH)}
-                  </div>
+                  {scale === "day" && (
+                    <>
+                      {/* Month row */}
+                      <div className="absolute flex h-6" style={{ width: chartWidth }}>
+                        {getMonthHeaders(dates, DAY_WIDTH)}
+                      </div>
+                      {/* Day row */}
+                      <div
+                        className="flex h-6 mt-6"
+                        style={{ width: chartWidth }}
+                      >
+                        {dates.map((date, i) => (
+                          <div
+                            key={i}
+                            className={`flex items-center justify-center text-xs border-r ${
+                              isToday(date) ? "bg-primary/10 font-bold" : ""
+                            } ${isWeekend(date) ? "bg-muted/50" : ""}`}
+                            style={{ width: DAY_WIDTH, minWidth: DAY_WIDTH }}
+                          >
+                            {format(date, "d")}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {scale === "week" && (
+                    <>
+                      {/* Month row */}
+                      <div className="absolute flex h-6" style={{ width: chartWidth }}>
+                        {getMonthHeaders(dates, DAY_WIDTH)}
+                      </div>
+                      {/* Week number row */}
+                      <div
+                        className="flex h-6 mt-6"
+                        style={{ width: chartWidth }}
+                      >
+                        {getWeekHeaders(dates, DAY_WIDTH)}
+                      </div>
+                    </>
+                  )}
+                  {scale === "month" && (
+                    <>
+                      {/* Year row */}
+                      <div className="absolute flex h-6" style={{ width: chartWidth }}>
+                        {getYearHeaders(dates, DAY_WIDTH)}
+                      </div>
+                      {/* Month row */}
+                      <div
+                        className="flex h-6 mt-6"
+                        style={{ width: chartWidth }}
+                      >
+                        {getMonthOnlyHeaders(dates, DAY_WIDTH)}
+                      </div>
+                    </>
+                  )}
+                  {scale === "quarter" && (
+                    <>
+                      {/* Year row */}
+                      <div className="absolute flex h-6" style={{ width: chartWidth }}>
+                        {getYearHeaders(dates, DAY_WIDTH)}
+                      </div>
+                      {/* Quarter row */}
+                      <div
+                        className="flex h-6 mt-6"
+                        style={{ width: chartWidth }}
+                      >
+                        {getQuarterHeaders(dates, DAY_WIDTH)}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -471,18 +546,31 @@ export function GanttView() {
               }}
             >
               {/* Grid lines */}
-              {dates.map((date, i) => (
-                <div
-                  key={i}
-                  className={`absolute top-0 bottom-0 border-r ${
-                    isWeekend(date) ? "bg-muted/30" : ""
-                  }`}
-                  style={{
-                    left: i * DAY_WIDTH,
-                    width: DAY_WIDTH,
-                  }}
-                />
-              ))}
+              {mode === "relative" ? (
+                relativeDays.map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute top-0 bottom-0 border-r"
+                    style={{
+                      left: i * DAY_WIDTH,
+                      width: DAY_WIDTH,
+                    }}
+                  />
+                ))
+              ) : (
+                dates.map((date, i) => (
+                  <div
+                    key={i}
+                    className={`absolute top-0 bottom-0 border-r ${
+                      isWeekend(date) ? "bg-muted/30" : ""
+                    }`}
+                    style={{
+                      left: i * DAY_WIDTH,
+                      width: DAY_WIDTH,
+                    }}
+                  />
+                ))
+              )}
 
               {/* Row lines */}
               {treeTasks.map((_, i) => (
@@ -493,12 +581,14 @@ export function GanttView() {
                 />
               ))}
 
-              {/* Today line */}
-              <TodayLine
-                dateRange={dateRange}
-                dayWidth={DAY_WIDTH}
-                height={treeTasks.length * ROW_HEIGHT}
-              />
+              {/* Today line (only in date mode) */}
+              {mode === "date" && (
+                <TodayLine
+                  dateRange={dateRange}
+                  dayWidth={DAY_WIDTH}
+                  height={treeTasks.length * ROW_HEIGHT}
+                />
+              )}
 
               {/* Task bars */}
               {treeTasks.map((task, index) => {
@@ -510,6 +600,9 @@ export function GanttView() {
                 const displayEndDate = isDragging && dragPreview?.endDate
                   ? dragPreview.endDate
                   : task.endDate;
+
+                // Get relative schedule for this task
+                const relativeSchedule = relativeScheduleResult.schedules.get(task.id);
 
                 return (
                   <TaskBar
@@ -523,6 +616,8 @@ export function GanttView() {
                     displayEndDate={displayEndDate}
                     isDragging={isDragging}
                     onDragStart={handleDragStart}
+                    mode={mode}
+                    relativeSchedule={relativeSchedule}
                   />
                 );
               })}
@@ -535,6 +630,8 @@ export function GanttView() {
                 dateRange={dateRange}
                 dayWidth={DAY_WIDTH}
                 rowHeight={ROW_HEIGHT}
+                mode={mode}
+                relativeSchedules={relativeScheduleResult.schedules}
               />
             </div>
           </div>
@@ -561,6 +658,8 @@ interface TaskBarProps {
     originalStartDate: string | undefined,
     originalEndDate: string | undefined
   ) => void;
+  mode: GanttMode;
+  relativeSchedule: { relativeStart: number; duration: number } | undefined;
 }
 
 function TaskBar({
@@ -573,18 +672,30 @@ function TaskBar({
   displayEndDate,
   isDragging,
   onDragStart,
+  mode,
+  relativeSchedule,
 }: TaskBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
 
-  const position = calculateBarPosition(
-    displayStartDate ? new Date(displayStartDate) : undefined,
-    displayEndDate ? new Date(displayEndDate) : undefined,
-    dateRange.startDate,
-    dateRange.endDate,
-    dayWidth
-  );
+  // Calculate position based on mode
+  const position = mode === "relative"
+    ? relativeSchedule
+      ? {
+          left: relativeSchedule.relativeStart * dayWidth,
+          width: Math.max(relativeSchedule.duration * dayWidth, dayWidth),
+        }
+      : null
+    : calculateBarPosition(
+        displayStartDate ? new Date(displayStartDate) : undefined,
+        displayEndDate ? new Date(displayEndDate) : undefined,
+        dateRange.startDate,
+        dateRange.endDate,
+        dayWidth
+      );
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Disable drag in relative mode
+    if (mode === "relative") return;
     if (!barRef.current || !position) return;
 
     const rect = barRef.current.getBoundingClientRect();

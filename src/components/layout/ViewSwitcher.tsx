@@ -1,4 +1,4 @@
-import { List, GanttChart, Columns3 } from "lucide-react";
+import { List, GanttChart, Columns3, Network } from "lucide-react";
 import { useViewStore, ViewType } from "@/stores/viewStore";
 import { cn } from "@/lib/utils";
 
@@ -6,6 +6,7 @@ const views: { type: ViewType; label: string; icon: React.ReactNode }[] = [
   { type: "list", label: "List", icon: <List className="h-4 w-4" /> },
   { type: "gantt", label: "Gantt", icon: <GanttChart className="h-4 w-4" /> },
   { type: "kanban", label: "Kanban", icon: <Columns3 className="h-4 w-4" /> },
+  { type: "network", label: "Network", icon: <Network className="h-4 w-4" /> },
 ];
 
 export function ViewSwitcher() {
