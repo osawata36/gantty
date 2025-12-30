@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, differenceInDays } from "date-fns";
 import { ja } from "date-fns/locale";
+import type { DateRange } from "react-day-picker";
 import { CalendarIcon, Plus, Trash2, Link2 } from "lucide-react";
 import {
   Sheet,
@@ -118,14 +119,33 @@ export function TaskDetailPanel({
     updateTask(task.id, { [field]: value });
   };
 
-  const handleStartDateSelect = (date: Date | undefined) => {
-    const dateStr = date ? date.toISOString().split("T")[0] : undefined;
-    handleChange("startDate", dateStr);
-  };
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    if (!range) {
+      // Clear both dates
+      updateTask(task.id, { startDate: undefined, endDate: undefined });
+      setFormState((prev) => ({ ...prev, startDate: undefined, endDate: undefined }));
+      return;
+    }
 
-  const handleEndDateSelect = (date: Date | undefined) => {
-    const dateStr = date ? date.toISOString().split("T")[0] : undefined;
-    handleChange("endDate", dateStr);
+    const { from, to } = range;
+
+    // If only one date selected, wait for the second
+    if (from && !to) {
+      const dateStr = from.toISOString().split("T")[0];
+      setFormState((prev) => ({ ...prev, startDate: dateStr, endDate: undefined }));
+      return;
+    }
+
+    if (from && to) {
+      // Ensure from <= to (auto-swap if needed)
+      const [startDate, endDate] = from <= to ? [from, to] : [to, from];
+      const startStr = startDate.toISOString().split("T")[0];
+      const endStr = endDate.toISOString().split("T")[0];
+      const duration = differenceInDays(endDate, startDate) + 1;
+
+      updateTask(task.id, { startDate: startStr, endDate: endStr, duration });
+      setFormState((prev) => ({ ...prev, startDate: startStr, endDate: endStr, duration }));
+    }
   };
 
   const handleStatusChange = (value: string) => {
@@ -282,76 +302,84 @@ export function TaskDetailPanel({
             </div>
           </div>
 
-          {/* 開始日・終了日・所要日数 */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>開始日</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !formState.startDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formatDate(formState.startDate)}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={parseDate(formState.startDate)}
-                    onSelect={handleStartDateSelect}
-                    locale={ja}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+          {/* 期間選択（開始日〜終了日） */}
+          <div className="flex flex-col gap-2">
+            <Label>期間</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !formState.startDate && !formState.endDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {formState.startDate && formState.endDate ? (
+                    <>
+                      {formatDate(formState.startDate)} 〜 {formatDate(formState.endDate)}
+                      <span className="ml-2 text-muted-foreground">
+                        ({formState.duration ?? differenceInDays(parseDate(formState.endDate)!, parseDate(formState.startDate)!) + 1}日間)
+                      </span>
+                    </>
+                  ) : formState.startDate ? (
+                    <>
+                      {formatDate(formState.startDate)} 〜 <span className="text-muted-foreground">終了日を選択</span>
+                    </>
+                  ) : (
+                    "カレンダーで期間を選択"
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="range"
+                  selected={{
+                    from: parseDate(formState.startDate),
+                    to: parseDate(formState.endDate),
+                  }}
+                  onSelect={handleDateRangeSelect}
+                  locale={ja}
+                  numberOfMonths={2}
+                />
+                <div className="border-t p-3 flex justify-between items-center">
+                  <span className="text-xs text-muted-foreground">
+                    2回クリックで期間を選択
+                  </span>
+                  {(formState.startDate || formState.endDate) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDateRangeSelect(undefined)}
+                    >
+                      クリア
+                    </Button>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-            <div className="flex flex-col gap-2">
-              <Label>終了日</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !formState.endDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formatDate(formState.endDate)}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={parseDate(formState.endDate)}
-                    onSelect={handleEndDateSelect}
-                    locale={ja}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="duration">所要日数</Label>
-              <Input
-                id="duration"
-                type="number"
-                min={1}
-                value={formState.duration ?? ""}
-                onChange={(e) =>
-                  handleChange(
-                    "duration",
-                    e.target.value ? parseInt(e.target.value, 10) : undefined
-                  )
-                }
-                placeholder="日数"
-              />
-            </div>
+          {/* 所要日数（手動調整用） */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="duration">所要日数</Label>
+            <Input
+              id="duration"
+              type="number"
+              min={1}
+              value={formState.duration ?? ""}
+              onChange={(e) =>
+                handleChange(
+                  "duration",
+                  e.target.value ? parseInt(e.target.value, 10) : undefined
+                )
+              }
+              placeholder="日数"
+              className="w-32"
+            />
+            <span className="text-xs text-muted-foreground">
+              日付なしでも所要日数だけ設定できます
+            </span>
           </div>
 
           {/* 進捗率 */}

@@ -163,4 +163,101 @@ describe("TaskDetailPanel", () => {
       expect(state.project?.tasks[0].progress).toBe(100);
     });
   });
+
+  describe("期間選択", () => {
+    it("期間ボタンに日付未設定のプレースホルダーが表示される", () => {
+      useProjectStore.getState().addTask("タスク1");
+      const taskId = useProjectStore.getState().project?.tasks[0].id!;
+
+      render(
+        <TaskDetailPanel
+          taskId={taskId}
+          open={true}
+          onOpenChange={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText("カレンダーで期間を選択")).toBeInTheDocument();
+    });
+
+    it("設定済みの期間が表示される", () => {
+      useProjectStore.getState().addTask("タスク1");
+      const taskId = useProjectStore.getState().project?.tasks[0].id!;
+      useProjectStore.getState().updateTask(taskId, {
+        startDate: "2024-01-15",
+        endDate: "2024-01-19",
+        duration: 5,
+      });
+
+      render(
+        <TaskDetailPanel
+          taskId={taskId}
+          open={true}
+          onOpenChange={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText(/2024年1月15日/)).toBeInTheDocument();
+      expect(screen.getByText(/2024年1月19日/)).toBeInTheDocument();
+      expect(screen.getByText(/5日間/)).toBeInTheDocument();
+    });
+
+    it("期間ボタンをクリックするとカレンダーが開く", async () => {
+      useProjectStore.getState().addTask("タスク1");
+      const taskId = useProjectStore.getState().project?.tasks[0].id!;
+
+      const user = userEvent.setup();
+      render(
+        <TaskDetailPanel
+          taskId={taskId}
+          open={true}
+          onOpenChange={vi.fn()}
+        />
+      );
+
+      // 期間ボタンをクリック
+      const periodButton = screen.getByText("カレンダーで期間を選択");
+      await user.click(periodButton);
+
+      // カレンダーが表示されることを確認
+      expect(screen.getByText("2回クリックで期間を選択")).toBeInTheDocument();
+    });
+
+    it("所要日数を直接入力できる", async () => {
+      useProjectStore.getState().addTask("タスク1");
+      const taskId = useProjectStore.getState().project?.tasks[0].id!;
+
+      const user = userEvent.setup();
+      render(
+        <TaskDetailPanel
+          taskId={taskId}
+          open={true}
+          onOpenChange={vi.fn()}
+        />
+      );
+
+      // 所要日数入力フィールドを取得
+      const durationInput = screen.getByLabelText("所要日数");
+      await user.clear(durationInput);
+      await user.type(durationInput, "7");
+
+      const state = useProjectStore.getState();
+      expect(state.project?.tasks[0].duration).toBe(7);
+    });
+
+    it("日付なしでも所要日数だけ設定できることの説明がある", () => {
+      useProjectStore.getState().addTask("タスク1");
+      const taskId = useProjectStore.getState().project?.tasks[0].id!;
+
+      render(
+        <TaskDetailPanel
+          taskId={taskId}
+          open={true}
+          onOpenChange={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText("日付なしでも所要日数だけ設定できます")).toBeInTheDocument();
+    });
+  });
 });

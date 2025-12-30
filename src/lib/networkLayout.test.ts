@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   calculateNetworkLayout,
   createEdgePath,
-  type NodePosition,
   type EdgePath,
 } from "./networkLayout";
 import type { Task, TaskDependency } from "@/types";
