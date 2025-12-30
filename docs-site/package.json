@@ -1,0 +1,16 @@
+{
+  "name": "gantty-docs",
+  "version": "1.0.0",
+  "description": "Gantty 操作マニュアルサイト",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "keywords": ["gantty", "manual", "documentation"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}
