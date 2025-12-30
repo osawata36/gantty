@@ -209,4 +209,39 @@ describe("GanttView", () => {
       expect(screen.queryByText("子タスク")).not.toBeInTheDocument();
     });
   });
+
+  describe("依存関係の接続", () => {
+    beforeEach(() => {
+      useProjectStore.getState().createNewProject("テストプロジェクト");
+      useProjectStore.getState().addTask("タスク1");
+      useProjectStore.getState().addTask("タスク2");
+      const tasks = useProjectStore.getState().project!.tasks;
+      useProjectStore.getState().updateTask(tasks[0].id, {
+        startDate: "2024-01-10",
+        endDate: "2024-01-15",
+      });
+      useProjectStore.getState().updateTask(tasks[1].id, {
+        startDate: "2024-01-16",
+        endDate: "2024-01-20",
+      });
+    });
+
+    it("タスクバーにdata-task-id属性がある", () => {
+      render(<GanttView />);
+
+      const taskBar0 = screen.getByTestId("gantt-task-bar-0");
+      const taskBar1 = screen.getByTestId("gantt-task-bar-1");
+
+      expect(taskBar0).toHaveAttribute("data-task-id");
+      expect(taskBar1).toHaveAttribute("data-task-id");
+    });
+
+    it("タスクバーに接続ハンドルが表示される", () => {
+      render(<GanttView />);
+
+      // 接続ハンドルはtitle属性で識別
+      const handles = screen.getAllByTitle("ドラッグして依存関係を作成");
+      expect(handles.length).toBe(2); // 2つのタスクに対して2つのハンドル
+    });
+  });
 });

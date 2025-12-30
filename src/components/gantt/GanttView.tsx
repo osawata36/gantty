@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { format, isToday, differenceInDays, getWeek, getQuarter } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ChevronRight, ChevronDown, CalendarDays, Calendar, Hash } from "lucide-react";
+import { ChevronRight, ChevronDown, CalendarDays, Calendar, Hash, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/projectStore";
 import { DependencyArrows } from "./DependencyArrows";
@@ -45,6 +45,14 @@ interface DragPreview {
   endDate: string | undefined;
 }
 
+interface ConnectionState {
+  sourceTaskId: string;
+  sourceX: number;
+  sourceY: number;
+  currentX: number;
+  currentY: number;
+}
+
 export function GanttView() {
   const tasks = useProjectStore((state) => state.project?.tasks ?? EMPTY_TASKS);
   const dependencies = useProjectStore((state) => state.project?.dependencies ?? EMPTY_DEPENDENCIES);
@@ -55,12 +63,16 @@ export function GanttView() {
   const isTaskCollapsed = useProjectStore((state) => state.isTaskCollapsed);
   const collapsedTaskIds = useProjectStore((state) => state.collapsedTaskIds);
 
+  const addDependency = useProjectStore((state) => state.addDependency);
+
   const [scale, setScale] = useState<ScaleType>("day");
   const [mode, setMode] = useState<GanttMode>("date");
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
+  const [connectionState, setConnectionState] = useState<ConnectionState | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
 
   // Calculate relative schedule for relative mode
   const relativeScheduleResult = useMemo(() => {
@@ -263,6 +275,41 @@ export function GanttView() {
     setDragPreview(null);
   }, [dragState, dragPreview, updateTask]);
 
+  // Connection drag handlers
+  const handleConnectionStart = useCallback(
+    (taskId: string, startX: number, startY: number) => {
+      setConnectionState({
+        sourceTaskId: taskId,
+        sourceX: startX,
+        sourceY: startY,
+        currentX: startX,
+        currentY: startY,
+      });
+    },
+    []
+  );
+
+  const handleConnectionMove = useCallback(
+    (currentX: number, currentY: number) => {
+      if (!connectionState) return;
+      setConnectionState((prev) =>
+        prev ? { ...prev, currentX, currentY } : null
+      );
+    },
+    [connectionState]
+  );
+
+  const handleConnectionEnd = useCallback(
+    (targetTaskId: string | null) => {
+      if (connectionState && targetTaskId && targetTaskId !== connectionState.sourceTaskId) {
+        // Create FS dependency: source -> target
+        addDependency(connectionState.sourceTaskId, targetTaskId, "FS", 0);
+      }
+      setConnectionState(null);
+    },
+    [connectionState, addDependency]
+  );
+
   // Global mouse event handlers for drag
   useEffect(() => {
     if (!dragState) return;
@@ -283,6 +330,34 @@ export function GanttView() {
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [dragState, handleDragMove, handleDragEnd]);
+
+  // Global mouse event handlers for connection drag
+  useEffect(() => {
+    if (!connectionState) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (chartContainerRef.current) {
+        const rect = chartContainerRef.current.getBoundingClientRect();
+        handleConnectionMove(e.clientX - rect.left + chartContainerRef.current.scrollLeft, e.clientY - rect.top + chartContainerRef.current.scrollTop);
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      // Find target task under cursor
+      const target = e.target as HTMLElement;
+      const taskBar = target.closest("[data-task-id]");
+      const targetTaskId = taskBar?.getAttribute("data-task-id") ?? null;
+      handleConnectionEnd(targetTaskId);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [connectionState, handleConnectionMove, handleConnectionEnd]);
 
   if (treeTasks.length === 0) {
     return (
@@ -534,7 +609,10 @@ export function GanttView() {
 
           {/* Chart area */}
           <div
-            ref={chartRef}
+            ref={(el) => {
+              (chartRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+              (chartContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+            }}
             className="flex-1 overflow-auto"
             onScroll={handleChartScroll}
           >
@@ -618,6 +696,8 @@ export function GanttView() {
                     onDragStart={handleDragStart}
                     mode={mode}
                     relativeSchedule={relativeSchedule}
+                    onConnectionStart={handleConnectionStart}
+                    isConnecting={connectionState !== null}
                   />
                 );
               })}
@@ -633,6 +713,41 @@ export function GanttView() {
                 mode={mode}
                 relativeSchedules={relativeScheduleResult.schedules}
               />
+
+              {/* Connection preview line */}
+              {connectionState && (
+                <svg
+                  className="absolute inset-0 pointer-events-none z-30"
+                  style={{ overflow: "visible" }}
+                >
+                  <defs>
+                    <marker
+                      id="connection-preview-arrow"
+                      markerWidth="10"
+                      markerHeight="7"
+                      refX="9"
+                      refY="3.5"
+                      orient="auto"
+                    >
+                      <polygon
+                        points="0 0, 10 3.5, 0 7"
+                        className="fill-primary"
+                      />
+                    </marker>
+                  </defs>
+                  <line
+                    x1={connectionState.sourceX}
+                    y1={connectionState.sourceY}
+                    x2={connectionState.currentX}
+                    y2={connectionState.currentY}
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeDasharray="5,5"
+                    className="text-primary"
+                    markerEnd="url(#connection-preview-arrow)"
+                  />
+                </svg>
+              )}
             </div>
           </div>
         </div>
@@ -660,6 +775,8 @@ interface TaskBarProps {
   ) => void;
   mode: GanttMode;
   relativeSchedule: { relativeStart: number; duration: number } | undefined;
+  onConnectionStart: (taskId: string, startX: number, startY: number) => void;
+  isConnecting: boolean;
 }
 
 function TaskBar({
@@ -674,6 +791,8 @@ function TaskBar({
   onDragStart,
   mode,
   relativeSchedule,
+  onConnectionStart,
+  isConnecting,
 }: TaskBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -734,13 +853,32 @@ function TaskBar({
 
   const barPadding = 4;
 
+  const handleConnectionHandleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (barRef.current) {
+      const rect = barRef.current.getBoundingClientRect();
+      const chartContainer = barRef.current.closest(".overflow-auto");
+      if (chartContainer) {
+        const containerRect = chartContainer.getBoundingClientRect();
+        const scrollLeft = chartContainer.scrollLeft;
+        const scrollTop = chartContainer.scrollTop;
+        // Calculate position relative to the chart container
+        const x = rect.right - containerRect.left + scrollLeft;
+        const y = rect.top + rect.height / 2 - containerRect.top + scrollTop;
+        onConnectionStart(task.id, x, y);
+      }
+    }
+  };
+
   return (
     <div
       ref={barRef}
       data-testid={`gantt-task-bar-${index}`}
+      data-task-id={task.id}
       className={`absolute rounded shadow-sm select-none ${
-        isDragging ? "bg-primary/60 ring-2 ring-primary" : "bg-primary/80"
-      }`}
+        isDragging ? "bg-primary/60 ring-2 ring-primary" : ""
+      } ${isConnecting ? "ring-2 ring-primary/50" : ""} bg-primary/80`}
       style={{
         left: position.left,
         top: index * rowHeight + barPadding,
@@ -762,12 +900,20 @@ function TaskBar({
         style={{ width: `${task.progress}%` }}
       />
       {/* Task name on bar */}
-      <span className="absolute inset-0 flex items-center px-2 text-xs text-primary-foreground truncate pointer-events-none">
+      <span className="absolute inset-0 flex items-center px-2 pr-6 text-xs text-primary-foreground truncate pointer-events-none">
         {task.name}
       </span>
       {/* Resize handles */}
       <div className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize" />
       <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize" />
+      {/* Connection handle */}
+      <div
+        className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-orange-500 border-2 border-white shadow cursor-crosshair hover:scale-125 transition-transform flex items-center justify-center z-10"
+        onMouseDown={handleConnectionHandleMouseDown}
+        title="ドラッグして依存関係を作成"
+      >
+        <Link2 className="w-2.5 h-2.5 text-white" />
+      </div>
     </div>
   );
 }
