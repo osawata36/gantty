@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { Task, Resource, Project, GanttyFile } from "./index";
-import { DEFAULT_STATUSES } from "./index";
+import type { Task, Resource, Project, GanttyFile, TaskDependency, DependencyType } from "./index";
+import { DEFAULT_STATUSES, DEPENDENCY_TYPES } from "./index";
 
 describe("Type definitions", () => {
   describe("Task", () => {
@@ -102,10 +102,115 @@ describe("Type definitions", () => {
           tasks: [],
           resources: [],
           statuses: DEFAULT_STATUSES,
+          dependencies: [],
         },
       };
       expect(file.version).toBe("1.0.0");
       expect(file.project.name).toBe("Test Project");
+    });
+  });
+
+  describe("TaskDependency", () => {
+    it("can create a valid dependency object", () => {
+      const dependency: TaskDependency = {
+        id: "dep-1",
+        predecessorId: "task-1",
+        successorId: "task-2",
+        type: "FS",
+        lag: 0,
+      };
+      expect(dependency.id).toBe("dep-1");
+      expect(dependency.predecessorId).toBe("task-1");
+      expect(dependency.successorId).toBe("task-2");
+      expect(dependency.type).toBe("FS");
+      expect(dependency.lag).toBe(0);
+    });
+
+    it("supports lag time (positive = delay)", () => {
+      const dependency: TaskDependency = {
+        id: "dep-2",
+        predecessorId: "task-1",
+        successorId: "task-2",
+        type: "FS",
+        lag: 2, // 2 days delay
+      };
+      expect(dependency.lag).toBe(2);
+    });
+
+    it("supports lead time (negative lag)", () => {
+      const dependency: TaskDependency = {
+        id: "dep-3",
+        predecessorId: "task-1",
+        successorId: "task-2",
+        type: "FS",
+        lag: -1, // 1 day lead (overlap)
+      };
+      expect(dependency.lag).toBe(-1);
+    });
+  });
+
+  describe("DependencyType", () => {
+    it("has all four standard dependency types", () => {
+      const types: DependencyType[] = ["FS", "SS", "FF", "SF"];
+      expect(types).toContain("FS");
+      expect(types).toContain("SS");
+      expect(types).toContain("FF");
+      expect(types).toContain("SF");
+    });
+  });
+
+  describe("DEPENDENCY_TYPES", () => {
+    it("has all four dependency types with labels", () => {
+      expect(DEPENDENCY_TYPES).toHaveLength(4);
+    });
+
+    it("includes FS (Finish-to-Start)", () => {
+      const fs = DEPENDENCY_TYPES.find((t) => t.id === "FS");
+      expect(fs).toBeDefined();
+      expect(fs?.name).toBe("終了-開始");
+    });
+
+    it("includes SS (Start-to-Start)", () => {
+      const ss = DEPENDENCY_TYPES.find((t) => t.id === "SS");
+      expect(ss).toBeDefined();
+      expect(ss?.name).toBe("開始-開始");
+    });
+
+    it("includes FF (Finish-to-Finish)", () => {
+      const ff = DEPENDENCY_TYPES.find((t) => t.id === "FF");
+      expect(ff).toBeDefined();
+      expect(ff?.name).toBe("終了-終了");
+    });
+
+    it("includes SF (Start-to-Finish)", () => {
+      const sf = DEPENDENCY_TYPES.find((t) => t.id === "SF");
+      expect(sf).toBeDefined();
+      expect(sf?.name).toBe("開始-終了");
+    });
+  });
+
+  describe("Project with dependencies", () => {
+    it("can include dependencies array", () => {
+      const project: Project = {
+        id: "project-1",
+        name: "Test Project",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        tasks: [],
+        resources: [],
+        statuses: DEFAULT_STATUSES,
+        dependencies: [
+          {
+            id: "dep-1",
+            predecessorId: "task-1",
+            successorId: "task-2",
+            type: "FS",
+            lag: 0,
+          },
+        ],
+      };
+      expect(project.dependencies).toHaveLength(1);
+      expect(project.dependencies![0].type).toBe("FS");
     });
   });
 });

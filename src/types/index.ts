@@ -1,6 +1,37 @@
 // Task status types
 export type TaskStatus = "not_started" | "in_progress" | "review" | "completed";
 
+// Dependency types
+// FS: Finish-to-Start (先行タスク終了後に後続タスク開始) - 最も一般的
+// SS: Start-to-Start (先行タスク開始と同時に後続タスク開始)
+// FF: Finish-to-Finish (先行タスク終了と同時に後続タスク終了)
+// SF: Start-to-Finish (先行タスク開始後に後続タスク終了) - 稀なケース
+export type DependencyType = "FS" | "SS" | "FF" | "SF";
+
+// Task dependency interface
+export interface TaskDependency {
+  id: string;
+  predecessorId: string; // 先行タスクID
+  successorId: string; // 後続タスクID
+  type: DependencyType;
+  lag: number; // ラグ（日数）: 正=遅延, 負=リード（オーバーラップ）
+}
+
+// Dependency type configuration
+export interface DependencyTypeConfig {
+  id: DependencyType;
+  name: string;
+  description: string;
+}
+
+// Default dependency types
+export const DEPENDENCY_TYPES: DependencyTypeConfig[] = [
+  { id: "FS", name: "終了-開始", description: "先行タスク終了後に開始" },
+  { id: "SS", name: "開始-開始", description: "先行タスク開始と同時に開始" },
+  { id: "FF", name: "終了-終了", description: "先行タスク終了と同時に終了" },
+  { id: "SF", name: "開始-終了", description: "先行タスク開始後に終了" },
+];
+
 // Task interface
 export interface Task {
   id: string;
@@ -9,6 +40,7 @@ export interface Task {
   parentId?: string;
   startDate?: string; // ISO 8601 date string
   endDate?: string; // ISO 8601 date string
+  duration?: number; // Duration in days
   progress: number; // 0-100
   status: TaskStatus;
   responsibleId?: string;
@@ -45,6 +77,7 @@ export interface Project {
   tasks: Task[];
   resources: Resource[];
   statuses: StatusConfig[];
+  dependencies?: TaskDependency[];
 }
 
 // Default statuses

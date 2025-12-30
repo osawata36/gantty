@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TaskList } from "./TaskList";
 import { useProjectStore } from "@/stores/projectStore";
@@ -176,6 +176,139 @@ describe("TaskList", () => {
 
       expect(screen.queryByText("Task to Delete")).not.toBeInTheDocument();
       expect(screen.getByText("タスクがありません")).toBeInTheDocument();
+    });
+  });
+
+  describe("責任者・ボール表示", () => {
+    it("責任者が割り当てられている場合、責任者名が表示される", () => {
+      useProjectStore.getState().addResource("田中太郎");
+      useProjectStore.getState().addTask("タスク1");
+
+      const resourceId =
+        useProjectStore.getState().project?.resources[0].id!;
+      const taskId = useProjectStore.getState().project?.tasks[0].id!;
+      useProjectStore.getState().updateTask(taskId, {
+        responsibleId: resourceId,
+      });
+
+      render(<TaskList />);
+
+      // 責任者バッジを確認
+      expect(screen.getByTestId("responsible-badge-0")).toHaveTextContent(
+        "田中太郎"
+      );
+    });
+
+    it("ボール保持者が割り当てられている場合、ボール保持者名が表示される", () => {
+      useProjectStore.getState().addResource("山田花子");
+      useProjectStore.getState().addTask("タスク1");
+
+      const resourceId =
+        useProjectStore.getState().project?.resources[0].id!;
+      const taskId = useProjectStore.getState().project?.tasks[0].id!;
+      useProjectStore.getState().updateTask(taskId, {
+        ballHolderId: resourceId,
+      });
+
+      render(<TaskList />);
+
+      // ボールバッジを確認
+      expect(screen.getByTestId("ball-badge-0")).toHaveTextContent("山田花子");
+    });
+
+    it("未割り当ての場合、バッジは表示されない", () => {
+      useProjectStore.getState().addTask("タスク1");
+
+      render(<TaskList />);
+
+      expect(screen.queryByTestId("responsible-badge-0")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("ball-badge-0")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("タスクの階層変更（ドラッグ&ドロップ）", () => {
+    it("タスクにdraggable属性がある", () => {
+      useProjectStore.getState().addTask("タスク1");
+
+      render(<TaskList />);
+
+      const taskItem = screen.getByTestId("task-item-0");
+      expect(taskItem).toHaveAttribute("draggable", "true");
+    });
+
+    it("タスクにドロップゾーンがある", () => {
+      useProjectStore.getState().addTask("タスク1");
+
+      render(<TaskList />);
+
+      const dropZone = screen.getByTestId("task-dropzone-0");
+      expect(dropZone).toBeInTheDocument();
+    });
+
+    it("ルートへのドロップゾーンがある", () => {
+      useProjectStore.getState().addTask("タスク1");
+
+      render(<TaskList />);
+
+      const rootDropZone = screen.getByTestId("root-dropzone");
+      expect(rootDropZone).toBeInTheDocument();
+    });
+
+    it("タスクを別のタスクにドロップすると子タスクになる", async () => {
+      useProjectStore.getState().addTask("親タスク");
+      useProjectStore.getState().addTask("子タスク候補");
+
+      render(<TaskList />);
+
+      const sourceTask = screen.getByTestId("task-item-1");
+      const targetDropZone = screen.getByTestId("task-dropzone-0");
+
+      const childTaskId = useProjectStore.getState().project?.tasks[1].id!;
+      const parentTaskId = useProjectStore.getState().project?.tasks[0].id!;
+
+      // Simulate drag & drop using fireEvent
+      fireEvent.dragStart(sourceTask, {
+        dataTransfer: { setData: () => {}, getData: () => childTaskId },
+      });
+
+      fireEvent.drop(targetDropZone, {
+        dataTransfer: { getData: () => childTaskId },
+      });
+
+      // Verify the task was moved
+      const childTask = useProjectStore
+        .getState()
+        .project?.tasks.find((t) => t.id === childTaskId);
+      expect(childTask?.parentId).toBe(parentTaskId);
+    });
+
+    it("タスクをルートにドロップすると親タスクが解除される", () => {
+      useProjectStore.getState().addTask("親タスク");
+      const parentTaskId = useProjectStore.getState().project?.tasks[0].id!;
+      useProjectStore.getState().addSubTask(parentTaskId, "子タスク");
+
+      render(<TaskList />);
+
+      const childTaskId = useProjectStore.getState().project?.tasks[1].id!;
+
+      // Before: child task has parent
+      expect(
+        useProjectStore.getState().project?.tasks.find((t) => t.id === childTaskId)
+          ?.parentId
+      ).toBe(parentTaskId);
+
+      const rootDropZone = screen.getByTestId("root-dropzone");
+
+      // Simulate drop using fireEvent
+      fireEvent.drop(rootDropZone, {
+        dataTransfer: { getData: () => childTaskId },
+      });
+
+      // After: child task has no parent (undefined)
+      const childTask = useProjectStore
+        .getState()
+        .project?.tasks.find((t) => t.id === childTaskId);
+      expect(childTask?.parentId).toBeUndefined();
     });
   });
 });
