@@ -311,4 +311,113 @@ describe("TaskList", () => {
       expect(childTask?.parentId).toBeUndefined();
     });
   });
+
+  describe("タスクの階層変更（ボタン）", () => {
+    it("インデントボタンが表示される", () => {
+      useProjectStore.getState().addTask("タスク1");
+
+      render(<TaskList />);
+
+      expect(screen.getByLabelText("階層を上げる")).toBeInTheDocument();
+      expect(screen.getByLabelText("階層を下げる")).toBeInTheDocument();
+    });
+
+    it("インデントボタンをクリックすると前のタスクの子になる", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("タスク1");
+      useProjectStore.getState().addTask("タスク2");
+
+      render(<TaskList />);
+
+      const task2Id = useProjectStore.getState().project?.tasks[1].id!;
+      const task1Id = useProjectStore.getState().project?.tasks[0].id!;
+
+      // タスク2のインデントボタンをクリック
+      const indentButtons = screen.getAllByLabelText("階層を下げる");
+      await user.click(indentButtons[1]); // 2番目のタスクのボタン
+
+      // タスク2がタスク1の子になる
+      const task2 = useProjectStore.getState().project?.tasks.find((t) => t.id === task2Id);
+      expect(task2?.parentId).toBe(task1Id);
+    });
+
+    it("アウトデントボタンをクリックすると親から外れる", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("親タスク");
+      const parentId = useProjectStore.getState().project?.tasks[0].id!;
+      useProjectStore.getState().addSubTask(parentId, "子タスク");
+
+      render(<TaskList />);
+
+      const childId = useProjectStore.getState().project?.tasks[1].id!;
+
+      // 子タスクのアウトデントボタンをクリック
+      const outdentButtons = screen.getAllByLabelText("階層を上げる");
+      await user.click(outdentButtons[1]); // 子タスクのボタン
+
+      // 子タスクがルートになる
+      const child = useProjectStore.getState().project?.tasks.find((t) => t.id === childId);
+      expect(child?.parentId).toBeUndefined();
+    });
+
+    it("ルートタスクのアウトデントボタンは無効", () => {
+      useProjectStore.getState().addTask("タスク1");
+
+      render(<TaskList />);
+
+      const outdentButton = screen.getByLabelText("階層を上げる");
+      expect(outdentButton).toBeDisabled();
+    });
+  });
+
+  describe("タスクの階層変更（キーボード）", () => {
+    it("タスク行がフォーカス可能", () => {
+      useProjectStore.getState().addTask("タスク1");
+
+      render(<TaskList />);
+
+      const taskItem = screen.getByTestId("task-item-0");
+      expect(taskItem).toHaveAttribute("tabIndex", "0");
+    });
+
+    it("Tabキーで階層を下げる", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("タスク1");
+      useProjectStore.getState().addTask("タスク2");
+
+      render(<TaskList />);
+
+      const task2Id = useProjectStore.getState().project?.tasks[1].id!;
+      const task1Id = useProjectStore.getState().project?.tasks[0].id!;
+
+      // タスク2にフォーカスしてTabキーを押す
+      const taskItem = screen.getByTestId("task-item-1");
+      taskItem.focus();
+      await user.keyboard("{Tab}");
+
+      // タスク2がタスク1の子になる
+      const task2 = useProjectStore.getState().project?.tasks.find((t) => t.id === task2Id);
+      expect(task2?.parentId).toBe(task1Id);
+    });
+
+    it("Shift+Tabキーで階層を上げる", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("親タスク");
+      const parentId = useProjectStore.getState().project?.tasks[0].id!;
+      useProjectStore.getState().addSubTask(parentId, "子タスク");
+
+      render(<TaskList />);
+
+      const childId = useProjectStore.getState().project?.tasks[1].id!;
+
+      // 子タスクにフォーカスしてShift+Tabキーを押す
+      const taskItem = screen.getByTestId("task-item-1");
+      taskItem.focus();
+      await user.keyboard("{Shift>}{Tab}{/Shift}");
+
+      // 子タスクがルートになる
+      const child = useProjectStore.getState().project?.tasks.find((t) => t.id === childId);
+      expect(child?.parentId).toBeUndefined();
+    });
+  });
 });

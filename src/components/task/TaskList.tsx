@@ -7,6 +7,8 @@ import {
   ChevronRight,
   ChevronDown,
   CornerDownRight,
+  IndentIncrease,
+  IndentDecrease,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +50,8 @@ export function TaskList() {
   const getParentProgress = useProjectStore((state) => state.getParentProgress);
   const getParentDates = useProjectStore((state) => state.getParentDates);
   const moveTask = useProjectStore((state) => state.moveTask);
+  const indentTask = useProjectStore((state) => state.indentTask);
+  const outdentTask = useProjectStore((state) => state.outdentTask);
   const ballHolderFilter = useProjectStore((state) => state.ballHolderFilter);
   const getFilteredTasks = useProjectStore((state) => state.getFilteredTasks);
 
@@ -103,6 +107,7 @@ export function TaskList() {
   const [newTaskName, setNewTaskName] = useState("");
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const editCancelledRef = useRef(false);
 
@@ -390,6 +395,40 @@ export function TaskList() {
     [moveTask]
   );
 
+  // Keyboard handler for indent/outdent
+  const handleTaskKeyDown = useCallback(
+    (e: React.KeyboardEvent, taskId: string) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          // Shift+Tab: outdent (move up in hierarchy)
+          outdentTask(taskId);
+        } else {
+          // Tab: indent (move down in hierarchy)
+          indentTask(taskId);
+        }
+      }
+    },
+    [indentTask, outdentTask]
+  );
+
+  // Indent/outdent button handlers
+  const handleIndent = useCallback(
+    (e: React.MouseEvent, taskId: string) => {
+      e.stopPropagation();
+      indentTask(taskId);
+    },
+    [indentTask]
+  );
+
+  const handleOutdent = useCallback(
+    (e: React.MouseEvent, taskId: string) => {
+      e.stopPropagation();
+      outdentTask(taskId);
+    },
+    [outdentTask]
+  );
+
   // Helper to check if a column is visible
   const isColumnVisible = (columnId: ColumnId) =>
     visibleColumns.includes(columnId);
@@ -467,12 +506,16 @@ export function TaskList() {
             <li
               key={task.id}
               data-testid={`task-item-${index}`}
+              tabIndex={0}
               draggable="true"
               onDragStart={(e) => handleDragStart(e, task.id)}
               onDragEnd={handleDragEnd}
+              onKeyDown={(e) => handleTaskKeyDown(e, task.id)}
+              onFocus={() => setFocusedTaskId(task.id)}
+              onBlur={() => setFocusedTaskId(null)}
               className={`relative flex items-center gap-2 rounded-md border px-3 py-2 hover:bg-muted/50 cursor-pointer ${
                 draggedTaskId === task.id ? "opacity-50" : ""
-              }`}
+              } ${focusedTaskId === task.id ? "ring-2 ring-primary" : ""}`}
               style={{ paddingLeft: `${12 + task.depth * 24}px` }}
               onClick={() => handleOpenDetail(task.id)}
             >
@@ -598,6 +641,27 @@ export function TaskList() {
                   })()}
                 </div>
               )}
+
+              {/* インデント変更ボタン */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={(e) => handleOutdent(e, task.id)}
+                aria-label="階層を上げる"
+                title="階層を上げる (Shift+Tab)"
+                disabled={!task.parentId}
+              >
+                <IndentDecrease className={`h-4 w-4 ${task.parentId ? "text-muted-foreground hover:text-primary" : "text-muted-foreground/30"}`} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={(e) => handleIndent(e, task.id)}
+                aria-label="階層を下げる"
+                title="階層を下げる (Tab)"
+              >
+                <IndentIncrease className="h-4 w-4 text-muted-foreground hover:text-primary" />
+              </Button>
 
               {/* サブタスク追加ボタン */}
               <Button
