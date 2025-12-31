@@ -244,4 +244,58 @@ describe("GanttView", () => {
       expect(handles.length).toBe(2); // 2つのタスクに対して2つのハンドル
     });
   });
+
+  describe("連動モード", () => {
+    beforeEach(() => {
+      useProjectStore.getState().createNewProject("テストプロジェクト");
+      useProjectStore.getState().addTask("タスク1");
+      useProjectStore.getState().addTask("タスク2");
+      const tasks = useProjectStore.getState().project!.tasks;
+      useProjectStore.getState().updateTask(tasks[0].id, {
+        startDate: "2024-01-10",
+        endDate: "2024-01-15",
+      });
+      useProjectStore.getState().updateTask(tasks[1].id, {
+        startDate: "2024-01-16",
+        endDate: "2024-01-20",
+      });
+    });
+
+    it("連動ボタンが表示される", () => {
+      render(<GanttView />);
+
+      expect(screen.getByRole("button", { name: /連動/ })).toBeInTheDocument();
+    });
+
+    it("連動ボタンをクリックするとトグルされる", async () => {
+      const user = userEvent.setup();
+      render(<GanttView />);
+
+      const cascadeButton = screen.getByRole("button", { name: /連動/ });
+
+      // 初期状態ではoutlineスタイル（OFF）
+      expect(cascadeButton).not.toHaveClass("bg-primary");
+
+      // クリックしてON
+      await user.click(cascadeButton);
+      expect(cascadeButton).toHaveClass("bg-primary");
+
+      // 再度クリックしてOFF
+      await user.click(cascadeButton);
+      expect(cascadeButton).not.toHaveClass("bg-primary");
+    });
+
+    it("連動モードONの状態でツールチップが正しい", async () => {
+      const user = userEvent.setup();
+      render(<GanttView />);
+
+      const cascadeButton = screen.getByRole("button", { name: /連動/ });
+      await user.click(cascadeButton);
+
+      expect(cascadeButton).toHaveAttribute(
+        "title",
+        "連動モード: ON（ドラッグ時に後続タスクも移動）"
+      );
+    });
+  });
 });

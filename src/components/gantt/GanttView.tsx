@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { format, isToday, differenceInDays, getWeek, getQuarter } from "date-fns";
+import { format, isToday, differenceInDays, getWeek, getQuarter, addDays } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ChevronRight, ChevronDown, CalendarDays, Calendar, Hash, Link2 } from "lucide-react";
+import { ChevronRight, ChevronDown, CalendarDays, Calendar, Hash, Link2, Link, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/projectStore";
 import { DependencyArrows } from "./DependencyArrows";
@@ -67,6 +67,7 @@ export function GanttView() {
 
   const [scale, setScale] = useState<ScaleType>("day");
   const [mode, setMode] = useState<GanttMode>("date");
+  const [cascadeMode, setCascadeMode] = useState<boolean>(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState | null>(null);
@@ -264,16 +265,101 @@ export function GanttView() {
     [dragState]
   );
 
+  // Calculate cascaded updates for successor tasks
+  const calculateCascadeUpdates = useCallback(
+    (
+      taskId: string,
+      daysDelta: number,
+      processed: Set<string> = new Set()
+    ): Array<{ taskId: string; startDate: string; endDate: string }> => {
+      if (processed.has(taskId)) return [];
+      processed.add(taskId);
+
+      const updates: Array<{ taskId: string; startDate: string; endDate: string }> = [];
+
+      // Find all dependencies where this task is the predecessor
+      const successorDeps = dependencies.filter((d) => d.predecessorId === taskId);
+
+      for (const dep of successorDeps) {
+        const successorTask = tasks.find((t) => t.id === dep.successorId);
+        if (!successorTask || !successorTask.startDate || !successorTask.endDate) continue;
+
+        // Calculate new dates based on dependency type
+        const successorStart = new Date(successorTask.startDate);
+        const successorEnd = new Date(successorTask.endDate);
+
+        let newStart: Date;
+        let newEnd: Date;
+
+        switch (dep.type) {
+          case "FS": // Finish-to-Start: successor moves with predecessor
+          case "SS": // Start-to-Start: successor moves with predecessor
+            newStart = addDays(successorStart, daysDelta);
+            newEnd = addDays(successorEnd, daysDelta);
+            break;
+          case "FF": // Finish-to-Finish: successor end moves with predecessor end
+          case "SF": // Start-to-Finish: successor moves with predecessor
+            newStart = addDays(successorStart, daysDelta);
+            newEnd = addDays(successorEnd, daysDelta);
+            break;
+          default:
+            newStart = addDays(successorStart, daysDelta);
+            newEnd = addDays(successorEnd, daysDelta);
+        }
+
+        updates.push({
+          taskId: dep.successorId,
+          startDate: format(newStart, "yyyy-MM-dd"),
+          endDate: format(newEnd, "yyyy-MM-dd"),
+        });
+
+        // Recursively calculate for successors of this task
+        const childUpdates = calculateCascadeUpdates(
+          dep.successorId,
+          daysDelta,
+          processed
+        );
+        updates.push(...childUpdates);
+      }
+
+      return updates;
+    },
+    [tasks, dependencies]
+  );
+
   const handleDragEnd = useCallback(() => {
     if (dragState && dragPreview) {
+      // Update the dragged task
       updateTask(dragState.taskId, {
         startDate: dragPreview.startDate,
         endDate: dragPreview.endDate,
       });
+
+      // If cascade mode is on and it's a move operation, update successor tasks
+      if (
+        cascadeMode &&
+        dragState.dragType === "move" &&
+        dragState.originalStartDate &&
+        dragPreview.startDate
+      ) {
+        const originalStart = new Date(dragState.originalStartDate);
+        const newStart = new Date(dragPreview.startDate);
+        const daysDelta = differenceInDays(newStart, originalStart);
+
+        if (daysDelta !== 0) {
+          const cascadeUpdates = calculateCascadeUpdates(dragState.taskId, daysDelta);
+          for (const update of cascadeUpdates) {
+            updateTask(update.taskId, {
+              startDate: update.startDate,
+              endDate: update.endDate,
+            });
+          }
+        }
+      }
     }
     setDragState(null);
     setDragPreview(null);
-  }, [dragState, dragPreview, updateTask]);
+  }, [dragState, dragPreview, updateTask, cascadeMode, calculateCascadeUpdates]);
 
   // Connection drag handlers
   const handleConnectionStart = useCallback(
@@ -440,6 +526,23 @@ export function GanttView() {
             >
               <CalendarDays className="h-4 w-4 mr-1" />
               今日
+            </Button>
+
+            <div className="h-4 w-px bg-border mx-1" />
+
+            {/* Cascade mode toggle */}
+            <Button
+              variant={cascadeMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCascadeMode(!cascadeMode)}
+              title={cascadeMode ? "連動モード: ON（ドラッグ時に後続タスクも移動）" : "連動モード: OFF（ドラッグしたタスクのみ移動）"}
+            >
+              {cascadeMode ? (
+                <Link className="h-4 w-4 mr-1" />
+              ) : (
+                <Unlink className="h-4 w-4 mr-1" />
+              )}
+              連動
             </Button>
           </>
         )}
