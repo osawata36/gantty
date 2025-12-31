@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { format, isToday, differenceInDays, getWeek, getQuarter, addDays } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ChevronRight, ChevronDown, CalendarDays, Calendar, Hash, Link2, Link, Unlink } from "lucide-react";
+import { ChevronRight, ChevronDown, CalendarDays, Calendar, Hash, Link2, Link, Unlink, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/projectStore";
 import { DependencyArrows } from "./DependencyArrows";
@@ -14,7 +14,7 @@ import {
   type ScaleType,
   type DragType,
 } from "@/lib/ganttUtils";
-import { calculateRelativeSchedule } from "@/lib/dependencyScheduler";
+import { calculateRelativeSchedule, calculateCriticalPath } from "@/lib/dependencyScheduler";
 import type { Task, TaskDependency } from "@/types";
 
 type GanttMode = "date" | "relative";
@@ -68,6 +68,7 @@ export function GanttView() {
   const [scale, setScale] = useState<ScaleType>("day");
   const [mode, setMode] = useState<GanttMode>("date");
   const [cascadeMode, setCascadeMode] = useState<boolean>(false);
+  const [showCriticalPath, setShowCriticalPath] = useState<boolean>(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState | null>(null);
@@ -78,6 +79,11 @@ export function GanttView() {
   // Calculate relative schedule for relative mode
   const relativeScheduleResult = useMemo(() => {
     return calculateRelativeSchedule(tasks, dependencies);
+  }, [tasks, dependencies]);
+
+  // Calculate critical path
+  const criticalPathResult = useMemo(() => {
+    return calculateCriticalPath(tasks, dependencies);
   }, [tasks, dependencies]);
 
   // Build tree structure
@@ -544,6 +550,18 @@ export function GanttView() {
               )}
               連動
             </Button>
+
+            {/* Critical path toggle */}
+            <Button
+              variant={showCriticalPath ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowCriticalPath(!showCriticalPath)}
+              title={showCriticalPath ? "クリティカルパス表示中" : "クリティカルパスを表示"}
+              className={showCriticalPath ? "bg-red-600 hover:bg-red-700" : ""}
+            >
+              <Zap className="h-4 w-4 mr-1" />
+              CP
+            </Button>
           </>
         )}
 
@@ -785,6 +803,10 @@ export function GanttView() {
                 // Get relative schedule for this task
                 const relativeSchedule = relativeScheduleResult.schedules.get(task.id);
 
+                // Check if this task is on the critical path
+                const isCritical = showCriticalPath && criticalPathResult.criticalTaskIds.has(task.id);
+                const taskFloat = criticalPathResult.taskFloats.get(task.id);
+
                 return (
                   <TaskBar
                     key={task.id}
@@ -801,6 +823,8 @@ export function GanttView() {
                     relativeSchedule={relativeSchedule}
                     onConnectionStart={handleConnectionStart}
                     isConnecting={connectionState !== null}
+                    isCritical={isCritical}
+                    taskFloat={taskFloat}
                   />
                 );
               })}
@@ -880,6 +904,8 @@ interface TaskBarProps {
   relativeSchedule: { relativeStart: number; duration: number } | undefined;
   onConnectionStart: (taskId: string, startX: number, startY: number) => void;
   isConnecting: boolean;
+  isCritical: boolean;
+  taskFloat: number | undefined;
 }
 
 function TaskBar({
@@ -896,6 +922,8 @@ function TaskBar({
   relativeSchedule,
   onConnectionStart,
   isConnecting,
+  isCritical,
+  taskFloat,
 }: TaskBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -974,14 +1002,26 @@ function TaskBar({
     }
   };
 
+  // Determine bar colors based on critical path status
+  const barBgClass = isCritical
+    ? "bg-red-500/80"
+    : "bg-primary/80";
+  const progressBgClass = isCritical
+    ? "bg-red-600"
+    : "bg-primary";
+  const ringClass = isCritical
+    ? "ring-2 ring-red-400"
+    : "";
+
   return (
     <div
       ref={barRef}
       data-testid={`gantt-task-bar-${index}`}
       data-task-id={task.id}
+      data-critical={isCritical ? "true" : undefined}
       className={`absolute rounded shadow-sm select-none ${
-        isDragging ? "bg-primary/60 ring-2 ring-primary" : ""
-      } ${isConnecting ? "ring-2 ring-primary/50" : ""} bg-primary/80`}
+        isDragging ? (isCritical ? "bg-red-400/60 ring-2 ring-red-500" : "bg-primary/60 ring-2 ring-primary") : ""
+      } ${isConnecting ? "ring-2 ring-primary/50" : ""} ${barBgClass} ${ringClass}`}
       style={{
         left: position.left,
         top: index * rowHeight + barPadding,
@@ -995,11 +1035,12 @@ function TaskBar({
           barRef.current.style.cursor = getCursor(e);
         }
       }}
+      title={isCritical ? `クリティカルパス（余裕: 0日）` : taskFloat !== undefined ? `余裕: ${taskFloat}日` : undefined}
     >
       {/* Progress fill */}
       <div
         data-testid={`gantt-progress-bar-${index}`}
-        className="absolute inset-0 rounded bg-primary pointer-events-none"
+        className={`absolute inset-0 rounded pointer-events-none ${progressBgClass}`}
         style={{ width: `${task.progress}%` }}
       />
       {/* Task name on bar */}

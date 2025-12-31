@@ -298,4 +298,78 @@ describe("GanttView", () => {
       );
     });
   });
+
+  describe("クリティカルパス表示", () => {
+    beforeEach(() => {
+      useProjectStore.getState().createNewProject("テストプロジェクト");
+      useProjectStore.getState().addTask("タスク1");
+      useProjectStore.getState().addTask("タスク2");
+      useProjectStore.getState().addTask("タスク3");
+      const tasks = useProjectStore.getState().project!.tasks;
+      // タスク1: 5日間
+      useProjectStore.getState().updateTask(tasks[0].id, {
+        startDate: "2024-01-10",
+        endDate: "2024-01-14",
+        duration: 5,
+      });
+      // タスク2: 3日間
+      useProjectStore.getState().updateTask(tasks[1].id, {
+        startDate: "2024-01-15",
+        endDate: "2024-01-17",
+        duration: 3,
+      });
+      // タスク3: 2日間
+      useProjectStore.getState().updateTask(tasks[2].id, {
+        startDate: "2024-01-15",
+        endDate: "2024-01-16",
+        duration: 2,
+      });
+      // タスク1 → タスク2、タスク1 → タスク3 の依存関係
+      useProjectStore.getState().addDependency(tasks[0].id, tasks[1].id, "FS", 0);
+      useProjectStore.getState().addDependency(tasks[0].id, tasks[2].id, "FS", 0);
+    });
+
+    it("CPボタンが表示される", () => {
+      render(<GanttView />);
+
+      expect(screen.getByRole("button", { name: /CP/ })).toBeInTheDocument();
+    });
+
+    it("CPボタンをクリックするとトグルされる", async () => {
+      const user = userEvent.setup();
+      render(<GanttView />);
+
+      const cpButton = screen.getByRole("button", { name: /CP/ });
+
+      // 初期状態ではOFF
+      expect(cpButton).not.toHaveClass("bg-red-600");
+
+      // クリックしてON
+      await user.click(cpButton);
+      expect(cpButton).toHaveClass("bg-red-600");
+
+      // 再度クリックしてOFF
+      await user.click(cpButton);
+      expect(cpButton).not.toHaveClass("bg-red-600");
+    });
+
+    it("CP表示ONでクリティカルパス上のタスクにdata-critical属性がつく", async () => {
+      const user = userEvent.setup();
+      render(<GanttView />);
+
+      const cpButton = screen.getByRole("button", { name: /CP/ });
+      await user.click(cpButton);
+
+      // タスク1とタスク2がクリティカルパス上（タスク1→タスク2が最長パス）
+      const taskBar0 = screen.getByTestId("gantt-task-bar-0");
+      const taskBar1 = screen.getByTestId("gantt-task-bar-1");
+      const taskBar2 = screen.getByTestId("gantt-task-bar-2");
+
+      // 最長パス上のタスクにはdata-critical="true"がある
+      expect(taskBar0).toHaveAttribute("data-critical", "true");
+      expect(taskBar1).toHaveAttribute("data-critical", "true");
+      // タスク3は短いパスなのでクリティカルではない
+      expect(taskBar2).not.toHaveAttribute("data-critical");
+    });
+  });
 });

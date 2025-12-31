@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   calculateRelativeSchedule,
   getTopologicalOrder,
+  calculateCriticalPath,
 } from "./dependencyScheduler";
 import type { Task, TaskDependency } from "@/types";
 
@@ -358,5 +359,147 @@ describe("getTopologicalOrder", () => {
     expect(result.taskLevel.get("B")).toBe(1);
     expect(result.taskLevel.get("C")).toBe(1);
     expect(result.taskLevel.get("D")).toBe(2);
+  });
+});
+
+describe("calculateCriticalPath", () => {
+  describe("基本的なクリティカルパス計算", () => {
+    it("空のタスクリストでは空の結果を返す", () => {
+      const result = calculateCriticalPath([], []);
+
+      expect(result.criticalTaskIds.size).toBe(0);
+      expect(result.projectDuration).toBe(0);
+    });
+
+    it("単一タスクはクリティカルパス上にある", () => {
+      const tasks = [createTask("A", "Task A", 5)];
+      const dependencies: TaskDependency[] = [];
+
+      const result = calculateCriticalPath(tasks, dependencies);
+
+      expect(result.criticalTaskIds.has("A")).toBe(true);
+      expect(result.taskFloats.get("A")).toBe(0);
+      expect(result.projectDuration).toBe(5);
+    });
+
+    it("依存関係のない複数タスクでは最長タスクがクリティカル", () => {
+      const tasks = [
+        createTask("A", "Task A", 3),
+        createTask("B", "Task B", 5),
+        createTask("C", "Task C", 2),
+      ];
+      const dependencies: TaskDependency[] = [];
+
+      const result = calculateCriticalPath(tasks, dependencies);
+
+      // 最長のBがクリティカル
+      expect(result.criticalTaskIds.has("B")).toBe(true);
+      expect(result.taskFloats.get("B")).toBe(0);
+
+      // AとCにはフロートがある
+      expect(result.taskFloats.get("A")).toBe(2); // 5 - 3 = 2
+      expect(result.taskFloats.get("C")).toBe(3); // 5 - 2 = 3
+      expect(result.projectDuration).toBe(5);
+    });
+  });
+
+  describe("チェーン依存関係", () => {
+    it("A→B→C のチェーンは全てクリティカル", () => {
+      const tasks = [
+        createTask("A", "Task A", 2),
+        createTask("B", "Task B", 3),
+        createTask("C", "Task C", 1),
+      ];
+      const dependencies = [
+        createDependency("A", "B", "FS"),
+        createDependency("B", "C", "FS"),
+      ];
+
+      const result = calculateCriticalPath(tasks, dependencies);
+
+      expect(result.criticalTaskIds.has("A")).toBe(true);
+      expect(result.criticalTaskIds.has("B")).toBe(true);
+      expect(result.criticalTaskIds.has("C")).toBe(true);
+      expect(result.projectDuration).toBe(6); // 2 + 3 + 1
+    });
+  });
+
+  describe("分岐のある依存関係", () => {
+    it("並行パスでは長い方がクリティカル", () => {
+      // A → B → D (A:2, B:3, D:1 = 6日)
+      // A → C → D (A:2, C:1, D:1 = 4日)
+      const tasks = [
+        createTask("A", "Task A", 2),
+        createTask("B", "Task B", 3),
+        createTask("C", "Task C", 1),
+        createTask("D", "Task D", 1),
+      ];
+      const dependencies = [
+        createDependency("A", "B", "FS"),
+        createDependency("A", "C", "FS"),
+        createDependency("B", "D", "FS"),
+        createDependency("C", "D", "FS"),
+      ];
+
+      const result = calculateCriticalPath(tasks, dependencies);
+
+      // A → B → D がクリティカルパス
+      expect(result.criticalTaskIds.has("A")).toBe(true);
+      expect(result.criticalTaskIds.has("B")).toBe(true);
+      expect(result.criticalTaskIds.has("D")).toBe(true);
+
+      // Cはクリティカルではない（フロートがある）
+      expect(result.criticalTaskIds.has("C")).toBe(false);
+      expect(result.taskFloats.get("C")).toBe(2); // 3 - 1 = 2日の余裕
+
+      expect(result.projectDuration).toBe(6);
+    });
+  });
+
+  describe("lagを含む依存関係", () => {
+    it("正のlagでクリティカルパスが変わる", () => {
+      const tasks = [
+        createTask("A", "Task A", 2),
+        createTask("B", "Task B", 1),
+        createTask("C", "Task C", 1),
+      ];
+      // A → B (lag 0): 2 + 1 = 3日
+      // A → C (lag 3): 2 + 3 + 1 = 6日
+      const dependencies = [
+        createDependency("A", "B", "FS", 0),
+        createDependency("A", "C", "FS", 3),
+      ];
+
+      const result = calculateCriticalPath(tasks, dependencies);
+
+      expect(result.criticalTaskIds.has("A")).toBe(true);
+      expect(result.criticalTaskIds.has("C")).toBe(true);
+      expect(result.criticalTaskIds.has("B")).toBe(false);
+      expect(result.projectDuration).toBe(6);
+    });
+  });
+
+  describe("複雑なネットワーク", () => {
+    it("複数の終端タスクがある場合", () => {
+      // A → B (A:3, B:2 = 5日)
+      // A → C (A:3, C:4 = 7日) ← クリティカル
+      const tasks = [
+        createTask("A", "Task A", 3),
+        createTask("B", "Task B", 2),
+        createTask("C", "Task C", 4),
+      ];
+      const dependencies = [
+        createDependency("A", "B", "FS"),
+        createDependency("A", "C", "FS"),
+      ];
+
+      const result = calculateCriticalPath(tasks, dependencies);
+
+      expect(result.criticalTaskIds.has("A")).toBe(true);
+      expect(result.criticalTaskIds.has("C")).toBe(true);
+      expect(result.criticalTaskIds.has("B")).toBe(false);
+      expect(result.taskFloats.get("B")).toBe(2);
+      expect(result.projectDuration).toBe(7);
+    });
   });
 });
