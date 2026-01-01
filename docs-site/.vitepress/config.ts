@@ -2,11 +2,15 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Gantty マニュアル',
-  description: 'WBS・ガントチャートエディタ Gantty の操作マニュアル',
+  description: 'シンプルで強力なWBS・ガントチャートエディタ',
   lang: 'ja-JP',
+  base: '/gantty/',
 
   head: [
-    ['link', { rel: 'icon', href: '/favicon.ico' }],
+    ['meta', { name: 'theme-color', content: '#3b82f6' }],
+    ['meta', { name: 'og:type', content: 'website' }],
+    ['meta', { name: 'og:locale', content: 'ja_JP' }],
+    ['meta', { name: 'og:site_name', content: 'Gantty Manual' }],
   ],
 
   themeConfig: {
@@ -14,82 +18,24 @@ export default defineConfig({
 
     nav: [
       { text: 'ホーム', link: '/' },
-      { text: 'はじめに', link: '/getting-started/' },
-      { text: 'ビュー', link: '/views/' },
-      { text: 'タスク管理', link: '/tasks/' },
-      { text: 'チュートリアル', link: '/tutorials/' },
+      { text: 'チュートリアル', link: '/tutorial/' },
+      { text: 'リファレンス', link: '/reference/' }
     ],
 
     sidebar: {
-      '/getting-started/': [
+      '/tutorial/': [
         {
           text: 'はじめに',
           items: [
-            { text: '概要', link: '/getting-started/' },
-            { text: 'インストール', link: '/getting-started/installation' },
-            { text: '最初のプロジェクト', link: '/getting-started/first-project' },
-          ]
-        }
-      ],
-      '/views/': [
-        {
-          text: 'ビューの使い方',
-          items: [
-            { text: '概要', link: '/views/' },
-            { text: 'リストビュー', link: '/views/list-view' },
-            { text: 'ガントチャートビュー', link: '/views/gantt-view' },
-            { text: 'カンバンビュー', link: '/views/kanban-view' },
-          ]
-        }
-      ],
-      '/tasks/': [
-        {
-          text: 'タスク管理',
-          items: [
-            { text: '概要', link: '/tasks/' },
-            { text: 'タスクの作成・編集', link: '/tasks/create-edit' },
-            { text: '階層構造（親子関係）', link: '/tasks/hierarchy' },
-            { text: '日程と所要日数', link: '/tasks/dates-duration' },
-            { text: '進捗管理', link: '/tasks/progress' },
-            { text: 'ドラッグ&ドロップ操作', link: '/tasks/drag-drop' },
-          ]
-        }
-      ],
-      '/members/': [
-        {
-          text: 'メンバー管理',
-          items: [
-            { text: '概要', link: '/members/' },
-            { text: 'メンバー登録', link: '/members/registration' },
-            { text: 'タスクへの割り当て', link: '/members/assignment' },
-          ]
-        }
-      ],
-      '/status/': [
-        {
-          text: 'ステータス管理',
-          items: [
-            { text: '概要', link: '/status/' },
-            { text: 'カスタマイズ', link: '/status/customization' },
-          ]
-        }
-      ],
-      '/files/': [
-        {
-          text: 'ファイル操作',
-          items: [
-            { text: '概要', link: '/files/' },
-            { text: '保存と読み込み', link: '/files/save-open' },
-          ]
-        }
-      ],
-      '/tutorials/': [
-        {
-          text: 'チュートリアル',
-          items: [
-            { text: '一覧', link: '/tutorials/' },
-            { text: '基本的なワークフロー', link: '/tutorials/basic-workflow' },
-            { text: 'チームプロジェクト管理', link: '/tutorials/team-project' },
+            { text: '概要', link: '/tutorial/' },
+            { text: 'Step 1: プロジェクトを始める', link: '/tutorial/step1-start-project' },
+            { text: 'Step 2: タスクを追加する', link: '/tutorial/step2-add-tasks' },
+            { text: 'Step 3: 階層構造を作る', link: '/tutorial/step3-hierarchy' },
+            { text: 'Step 4: 日程を設定する', link: '/tutorial/step4-schedule' },
+            { text: 'Step 5: ガントチャートを活用する', link: '/tutorial/step5-gantt' },
+            { text: 'Step 6: カンバンで進捗管理', link: '/tutorial/step6-kanban' },
+            { text: 'Step 7: チームメンバー管理', link: '/tutorial/step7-members' },
+            { text: 'Step 8: ネットワーク図', link: '/tutorial/step8-network' }
           ]
         }
       ],
@@ -98,18 +44,19 @@ export default defineConfig({
           text: 'リファレンス',
           items: [
             { text: '概要', link: '/reference/' },
-            { text: '用語集', link: '/reference/glossary' },
+            { text: 'ビュー', link: '/reference/views' },
+            { text: 'タスク', link: '/reference/tasks' },
+            { text: 'メンバー', link: '/reference/members' },
+            { text: 'ステータス', link: '/reference/status' },
+            { text: 'ファイル操作', link: '/reference/files' },
+            { text: '用語集', link: '/reference/glossary' }
           ]
         }
-      ],
-      '/faq/': [
-        {
-          text: 'よくある質問',
-          items: [
-            { text: 'FAQ', link: '/faq/' },
-          ]
-        }
-      ],
+      ]
+    },
+
+    search: {
+      provider: 'local'
     },
 
     socialLinks: [
@@ -118,32 +65,7 @@ export default defineConfig({
 
     footer: {
       message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2024-present Gantty'
-    },
-
-    search: {
-      provider: 'local',
-      options: {
-        translations: {
-          button: {
-            buttonText: '検索',
-            buttonAriaLabel: '検索'
-          },
-          modal: {
-            noResultsText: '結果が見つかりませんでした',
-            resetButtonTitle: 'リセット',
-            footer: {
-              selectText: '選択',
-              navigateText: '移動',
-              closeText: '閉じる'
-            }
-          }
-        }
-      }
-    },
-
-    outline: {
-      label: '目次'
+      copyright: 'Copyright 2024'
     },
 
     docFooter: {
@@ -151,10 +73,12 @@ export default defineConfig({
       next: '次のページ'
     },
 
-    lastUpdated: {
-      text: '最終更新'
+    outline: {
+      label: 'このページの内容'
     },
 
-    returnToTopLabel: 'トップに戻る',
+    lastUpdated: {
+      text: '最終更新'
+    }
   }
 })
