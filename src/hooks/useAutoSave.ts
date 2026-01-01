@@ -9,7 +9,7 @@ interface UseAutoSaveOptions {
   delayMs?: number;
 }
 
-const DEFAULT_DELAY_MS = 30000; // 30 seconds
+const DEFAULT_DELAY_MS = 2000; // 2 seconds for quick browser auto-save
 
 export function useAutoSave(options: UseAutoSaveOptions = {}) {
   const { delayMs = DEFAULT_DELAY_MS } = options;
@@ -21,6 +21,12 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const projectRef = useRef(project);
+
+  // Keep project ref updated for beforeunload handler
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
 
   // Update save status based on isModified
   useEffect(() => {
@@ -32,14 +38,15 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
   }, [isModified]);
 
   const performSave = useCallback(async () => {
-    if (!project) {
+    const currentProject = projectRef.current;
+    if (!currentProject) {
       return false;
     }
 
     setSaveStatus("saving");
 
     try {
-      const content = serializeProject(project);
+      const content = serializeProject(currentProject);
       // Save to IndexedDB for browser-based auto-save
       await saveToIndexedDB(content);
       markAsSaved();
@@ -50,7 +57,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
       setSaveStatus("modified");
       return false;
     }
-  }, [project, markAsSaved]);
+  }, [markAsSaved]);
 
   // Set up auto save timer
   useEffect(() => {
@@ -61,7 +68,6 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
     }
 
     // Don't schedule if disabled or not modified
-    // Note: In browser mode, we always auto-save to IndexedDB (no filePath check needed)
     if (!isAutoSaveEnabled || !isModified) {
       return;
     }
@@ -78,6 +84,26 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
       }
     };
   }, [isAutoSaveEnabled, isModified, delayMs, performSave]);
+
+  // Save immediately when user tries to leave the page
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const currentProject = projectRef.current;
+      if (currentProject && isAutoSaveEnabled) {
+        try {
+          const content = serializeProject(currentProject);
+          // Use synchronous localStorage as fallback for beforeunload
+          // IndexedDB is async and may not complete before page unload
+          localStorage.setItem("gantty_emergency_save", content);
+        } catch (error) {
+          console.error("Emergency save failed:", error);
+        }
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isAutoSaveEnabled]);
 
   const toggleAutoSave = useCallback(() => {
     setIsAutoSaveEnabled((prev) => !prev);

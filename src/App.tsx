@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   FilePlus2,
   FolderOpen,
@@ -29,6 +29,8 @@ import { useProjectStore } from "@/stores/projectStore";
 import { useFileOperations } from "@/hooks/useFileOperations";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useHistory } from "@/hooks/useHistory";
+import { loadFromIndexedDB } from "@/lib/browserStorage";
+import { deserializeProject } from "@/lib/fileUtils";
 import "./index.css";
 
 function App() {
@@ -39,13 +41,59 @@ function App() {
   const project = useProjectStore((state) => state.project);
   const filePath = useProjectStore((state) => state.filePath);
   const isModified = useProjectStore((state) => state.isModified);
+  const setProject = useProjectStore((state) => state.setProject);
   const createDefaultProject = useProjectStore((state) => state.createDefaultProject);
+  const markAsSaved = useProjectStore((state) => state.markAsSaved);
 
-  // Create default project on initial load if no project exists
+  const [isLoading, setIsLoading] = useState(true);
+  const initRef = useRef(false);
+
+  // Load project from IndexedDB/localStorage on initial load, or create default project
   useEffect(() => {
-    if (!project) {
+    if (initRef.current) return;
+    initRef.current = true;
+
+    async function initializeProject() {
+      // First, check for emergency save in localStorage (from beforeunload)
+      try {
+        const emergencySave = localStorage.getItem("gantty_emergency_save");
+        if (emergencySave) {
+          const result = deserializeProject(emergencySave);
+          if (result.success) {
+            setProject(result.project);
+            markAsSaved();
+            // Clear emergency save after successful restore
+            localStorage.removeItem("gantty_emergency_save");
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load from localStorage:", error);
+      }
+
+      // Then, try IndexedDB
+      try {
+        const savedData = await loadFromIndexedDB();
+        if (savedData) {
+          const result = deserializeProject(savedData);
+          if (result.success) {
+            setProject(result.project);
+            markAsSaved();
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load from IndexedDB:", error);
+      }
+
+      // No saved data or load failed, create default project
       createDefaultProject();
+      setIsLoading(false);
     }
+
+    initializeProject();
   }, []);
 
   const { saveProject, openProject, createNewProject } = useFileOperations();
@@ -220,6 +268,14 @@ function App() {
       </button>
     </div>
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
