@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
 import { useProjectStore } from "@/stores/projectStore";
+import { useViewStore } from "@/stores/viewStore";
 import type { Task, StatusConfig, Resource } from "@/types";
 
 // Empty array constants to avoid creating new arrays on each render
@@ -20,6 +21,7 @@ export function KanbanView() {
     (state) => state.project?.resources ?? EMPTY_RESOURCES
   );
   const setTaskStatus = useProjectStore((state) => state.setTaskStatus);
+  const openTaskDetail = useViewStore((state) => state.openTaskDetail);
 
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -151,7 +153,8 @@ export function KanbanView() {
                       draggable="true"
                       onDragStart={(e) => handleDragStart(e, task.id)}
                       onDragEnd={handleDragEnd}
-                      className={`bg-background rounded-lg border p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                      onClick={() => openTaskDetail(task.id)}
+                      className={`bg-background rounded-lg border p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
                         draggedTaskId === task.id ? "opacity-50" : ""
                       }`}
                     >

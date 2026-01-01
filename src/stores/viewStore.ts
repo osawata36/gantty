@@ -55,6 +55,9 @@ interface ViewState {
   sortConfig: SortConfig | null;
   searchQuery: string;
   filters: FilterConfig;
+  // Task detail panel state (shared across all views)
+  selectedTaskId: string | null;
+  detailPanelOpen: boolean;
 
   setView: (view: ViewType) => void;
   toggleColumnVisibility: (columnId: ColumnId) => void;
@@ -65,6 +68,10 @@ interface ViewState {
   setResponsibleFilter: (responsibleIds: string[]) => void;
   setDueDateFilter: (dueDate: DueDateFilter) => void;
   clearFilters: () => void;
+  // Task detail panel actions
+  openTaskDetail: (taskId: string) => void;
+  closeTaskDetail: () => void;
+  setDetailPanelOpen: (open: boolean) => void;
   reset: () => void;
 }
 
@@ -77,6 +84,8 @@ export const useViewStore = create<ViewState>()(
       sortConfig: null,
       searchQuery: "",
       filters: { ...DEFAULT_FILTERS },
+      selectedTaskId: null,
+      detailPanelOpen: false,
 
       setView: (view) => set({ currentView: view }),
 
@@ -120,6 +129,18 @@ export const useViewStore = create<ViewState>()(
         set({ filters: { ...DEFAULT_FILTERS } });
       },
 
+      openTaskDetail: (taskId) => {
+        set({ selectedTaskId: taskId, detailPanelOpen: true });
+      },
+
+      closeTaskDetail: () => {
+        set({ detailPanelOpen: false });
+      },
+
+      setDetailPanelOpen: (open) => {
+        set({ detailPanelOpen: open });
+      },
+
       reset: () => {
         set({
           currentView: "list",
@@ -128,6 +149,8 @@ export const useViewStore = create<ViewState>()(
           sortConfig: null,
           searchQuery: "",
           filters: { ...DEFAULT_FILTERS },
+          selectedTaskId: null,
+          detailPanelOpen: false,
         });
       },
     }),

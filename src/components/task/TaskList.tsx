@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback } from "react";
+import React, { useState, useRef, useMemo, useCallback } from "react";
 import { format, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import {
@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProjectStore } from "@/stores/projectStore";
 import { useViewStore, ColumnId } from "@/stores/viewStore";
-import { TaskDetailPanel } from "./TaskDetailPanel";
 import { BallHolderFilter } from "./BallHolderFilter";
 import { ColumnSettings, SortButton, COLUMN_LABELS } from "./ColumnSettings";
 import type { Task, Resource } from "@/types";
@@ -60,6 +59,7 @@ export function TaskList() {
   const sortConfig = useViewStore((state) => state.sortConfig);
   const searchQuery = useViewStore((state) => state.searchQuery);
   const filters = useViewStore((state) => state.filters);
+  const openTaskDetail = useViewStore((state) => state.openTaskDetail);
 
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
@@ -67,7 +67,25 @@ export function TaskList() {
     "before" | "child" | "after" | null
   >(null);
   const [dragOverRoot, setDragOverRoot] = useState(false);
+  const [isInvalidDrop, setIsInvalidDrop] = useState(false);
   const reorderTask = useProjectStore((state) => state.reorderTask);
+
+  // Check if dropping draggedTaskId onto targetTaskId would cause circular reference
+  const wouldCauseCircularReference = useCallback(
+    (draggedId: string, targetId: string): boolean => {
+      // Check if target is a descendant of dragged task
+      const isDescendant = (parentId: string, childId: string): boolean => {
+        const children = tasks.filter((t) => t.parentId === parentId);
+        for (const child of children) {
+          if (child.id === childId) return true;
+          if (isDescendant(child.id, childId)) return true;
+        }
+        return false;
+      };
+      return isDescendant(draggedId, targetId);
+    },
+    [tasks]
+  );
 
   const getResourceById = (resourceId: string | undefined) => {
     if (!resourceId) return undefined;
@@ -106,9 +124,7 @@ export function TaskList() {
   const [addingParentId, setAddingParentId] = useState<string | null>(null);
   const [newTaskName, setNewTaskName] = useState("");
   const [editing, setEditing] = useState<EditingState | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
-  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const editCancelledRef = useRef(false);
 
   // Check if any filters are active
@@ -188,6 +204,35 @@ export function TaskList() {
     });
   }, [treeTasks, sortConfig, getParentProgress, getResourceById]);
 
+  const handleAddKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      const trimmedName = newTaskName.trim();
+      if (trimmedName) {
+        // Add the task
+        if (addingParentId) {
+          addSubTask(addingParentId, trimmedName);
+          // Keep input field open for continuous adding
+          setNewTaskName("");
+          // Don't reset addingParentId or isAdding - keep input open
+        } else {
+          addTask(trimmedName);
+          setNewTaskName("");
+          setIsAdding(false);
+          setAddingParentId(null);
+        }
+      } else {
+        // Empty input - close the input field
+        setIsAdding(false);
+        setNewTaskName("");
+        setAddingParentId(null);
+      }
+    } else if (e.key === "Escape") {
+      setIsAdding(false);
+      setNewTaskName("");
+      setAddingParentId(null);
+    }
+  };
+
   const handleAddTask = () => {
     const trimmedName = newTaskName.trim();
     if (trimmedName) {
@@ -196,22 +241,6 @@ export function TaskList() {
       } else {
         addTask(trimmedName);
       }
-      setNewTaskName("");
-      setAddingParentId(null);
-    }
-  };
-
-  const handleAddKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      if (newTaskName.trim()) {
-        handleAddTask();
-      } else {
-        setIsAdding(false);
-        setNewTaskName("");
-        setAddingParentId(null);
-      }
-    } else if (e.key === "Escape") {
-      setIsAdding(false);
       setNewTaskName("");
       setAddingParentId(null);
     }
@@ -255,8 +284,7 @@ export function TaskList() {
   };
 
   const handleOpenDetail = (taskId: string) => {
-    setSelectedTaskId(taskId);
-    setDetailPanelOpen(true);
+    openTaskDetail(taskId);
   };
 
   const handleStartAddSubTask = (parentId: string) => {
@@ -324,19 +352,24 @@ export function TaskList() {
 
         if (percentage < 0.25) {
           setDragOverPosition("before");
+          setIsInvalidDrop(false); // before/after don't cause circular reference
         } else if (percentage > 0.75) {
           setDragOverPosition("after");
+          setIsInvalidDrop(false); // before/after don't cause circular reference
         } else {
           setDragOverPosition("child");
+          // Check for circular reference when dropping as child
+          setIsInvalidDrop(wouldCauseCircularReference(draggedTaskId, targetTaskId));
         }
       }
     },
-    [draggedTaskId]
+    [draggedTaskId, wouldCauseCircularReference]
   );
 
   const handleDragLeave = useCallback(() => {
     setDragOverTaskId(null);
     setDragOverPosition(null);
+    setIsInvalidDrop(false);
   }, []);
 
   const handleDrop = useCallback(
@@ -502,9 +535,10 @@ export function TaskList() {
         {sortedTreeTasks.map((task, index) => {
           const progress = getTaskProgress(task);
           const dates = getTaskDates(task);
+          const showInlineInput = isAdding && addingParentId === task.id;
           return (
+            <React.Fragment key={task.id}>
             <li
-              key={task.id}
               data-testid={`task-item-${index}`}
               tabIndex={0}
               draggable="true"
@@ -515,7 +549,9 @@ export function TaskList() {
               onBlur={() => setFocusedTaskId(null)}
               className={`relative flex items-center gap-2 rounded-md border px-3 py-2 hover:bg-muted/50 cursor-pointer ${
                 draggedTaskId === task.id ? "opacity-50" : ""
-              } ${focusedTaskId === task.id ? "ring-2 ring-primary" : ""}`}
+              } ${focusedTaskId === task.id ? "ring-2 ring-primary" : ""} ${
+                dragOverTaskId === task.id && isInvalidDrop ? "ring-2 ring-destructive" : ""
+              }`}
               style={{ paddingLeft: `${12 + task.depth * 24}px` }}
               onClick={() => handleOpenDetail(task.id)}
             >
@@ -712,6 +748,33 @@ export function TaskList() {
                 onDrop={(e) => handleDrop(e, task.id)}
               />
             </li>
+            {/* Inline subtask input - appears directly under parent task */}
+            {showInlineInput && (
+              <li
+                data-testid="inline-subtask-input"
+                className="flex gap-2 items-center rounded-md border border-dashed border-primary/50 bg-primary/5 px-3 py-2"
+                style={{ paddingLeft: `${12 + (task.depth + 1) * 24}px` }}
+              >
+                <span className="text-muted-foreground text-sm flex items-center">
+                  └
+                </span>
+                <Input
+                  value={newTaskName}
+                  onChange={(e) => setNewTaskName(e.target.value)}
+                  onKeyDown={handleAddKeyDown}
+                  onBlur={() => {
+                    if (!newTaskName.trim()) {
+                      setIsAdding(false);
+                      setAddingParentId(null);
+                    }
+                  }}
+                  placeholder="サブタスク名を入力"
+                  autoFocus
+                  className="flex-1"
+                />
+              </li>
+            )}
+            </React.Fragment>
           );
         })}
       </ul>
@@ -737,31 +800,9 @@ export function TaskList() {
         )}
       </div>
 
-      <TaskDetailPanel
-        taskId={selectedTaskId}
-        open={detailPanelOpen}
-        onOpenChange={setDetailPanelOpen}
-      />
-
-      {isAdding ? (
-        <div
-          className="flex gap-2"
-          style={{
-            paddingLeft: addingParentId
-              ? `${
-                  12 +
-                  ((treeTasks.find((t) => t.id === addingParentId)?.depth ?? 0) +
-                    1) *
-                    24
-                }px`
-              : undefined,
-          }}
-        >
-          {addingParentId && (
-            <span className="text-muted-foreground text-sm flex items-center">
-              └
-            </span>
-          )}
+      {/* Root-level task input (only shown when adding root task, not subtask) */}
+      {isAdding && !addingParentId ? (
+        <div className="flex gap-2">
           <Input
             value={newTaskName}
             onChange={(e) => setNewTaskName(e.target.value)}
@@ -772,14 +813,12 @@ export function TaskList() {
                 setAddingParentId(null);
               }
             }}
-            placeholder={
-              addingParentId ? "サブタスク名を入力" : "タスク名を入力"
-            }
+            placeholder="タスク名を入力"
             autoFocus
             className="flex-1"
           />
         </div>
-      ) : (
+      ) : !isAdding ? (
         <Button
           variant="ghost"
           className="justify-start"
@@ -788,7 +827,7 @@ export function TaskList() {
           <Plus className="mr-2 h-4 w-4" />
           タスクを追加
         </Button>
-      )}
+      ) : null}
     </div>
   );
 }

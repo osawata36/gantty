@@ -299,6 +299,71 @@ describe("GanttView", () => {
     });
   });
 
+  describe("リサイズハンドル", () => {
+    beforeEach(() => {
+      useProjectStore.getState().createNewProject("テストプロジェクト");
+      useProjectStore.getState().addTask("タスク1");
+      const taskId = useProjectStore.getState().project!.tasks[0].id;
+      useProjectStore.getState().updateTask(taskId, {
+        startDate: "2024-01-10",
+        endDate: "2024-01-20",
+      });
+    });
+
+    it("タスクバーホバー時にリサイズハンドルが表示される", async () => {
+      const user = userEvent.setup();
+      render(<GanttView />);
+
+      const taskBar = screen.getByTestId("gantt-task-bar-0");
+      await user.hover(taskBar);
+
+      // 左右のリサイズハンドルが表示される
+      expect(screen.getByTestId("resize-handle-left-0")).toBeInTheDocument();
+      expect(screen.getByTestId("resize-handle-right-0")).toBeInTheDocument();
+    });
+
+    it("リサイズハンドルにホバーするとカーソルがew-resizeになる", async () => {
+      const user = userEvent.setup();
+      render(<GanttView />);
+
+      const taskBar = screen.getByTestId("gantt-task-bar-0");
+      await user.hover(taskBar);
+
+      const leftHandle = screen.getByTestId("resize-handle-left-0");
+      const rightHandle = screen.getByTestId("resize-handle-right-0");
+
+      expect(leftHandle).toHaveStyle({ cursor: "ew-resize" });
+      expect(rightHandle).toHaveStyle({ cursor: "ew-resize" });
+    });
+
+    it("ホバーを外すとリサイズハンドルが非表示になる", async () => {
+      const user = userEvent.setup();
+      render(<GanttView />);
+
+      const taskBar = screen.getByTestId("gantt-task-bar-0");
+      await user.hover(taskBar);
+
+      // ハンドルが表示されている
+      expect(screen.getByTestId("resize-handle-left-0")).toBeInTheDocument();
+
+      // ホバーを外す
+      await user.unhover(taskBar);
+
+      // ハンドルが非表示になる
+      expect(screen.queryByTestId("resize-handle-left-0")).not.toBeInTheDocument();
+    });
+
+    it("ドラッグ中にタスクバーのツールチップに変更後の日付が表示される", async () => {
+      render(<GanttView />);
+
+      const taskBar = screen.getByTestId("gantt-task-bar-0");
+
+      // タスクバーにドラッグ中の日付表示用のdata属性があることを確認
+      // 通常状態ではドラッグ日付ツールチップは表示されない
+      expect(screen.queryByTestId("drag-tooltip-0")).not.toBeInTheDocument();
+    });
+  });
+
   describe("クリティカルパス表示", () => {
     beforeEach(() => {
       useProjectStore.getState().createNewProject("テストプロジェクト");

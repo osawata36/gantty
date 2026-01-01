@@ -229,6 +229,60 @@ describe("viewStore", () => {
     });
   });
 
+  describe("task detail panel", () => {
+    it("has no selected task by default", () => {
+      const state = useViewStore.getState();
+      expect(state.selectedTaskId).toBeNull();
+    });
+
+    it("has closed detail panel by default", () => {
+      const state = useViewStore.getState();
+      expect(state.detailPanelOpen).toBe(false);
+    });
+
+    it("can open task detail panel with a task", () => {
+      const { openTaskDetail } = useViewStore.getState();
+
+      openTaskDetail("task-1");
+
+      const state = useViewStore.getState();
+      expect(state.selectedTaskId).toBe("task-1");
+      expect(state.detailPanelOpen).toBe(true);
+    });
+
+    it("can close task detail panel", () => {
+      const { openTaskDetail, closeTaskDetail } = useViewStore.getState();
+
+      openTaskDetail("task-1");
+      closeTaskDetail();
+
+      const state = useViewStore.getState();
+      expect(state.detailPanelOpen).toBe(false);
+      // selectedTaskId should remain for potential re-open
+    });
+
+    it("can set detail panel open state", () => {
+      const { openTaskDetail, setDetailPanelOpen } = useViewStore.getState();
+
+      openTaskDetail("task-1");
+      setDetailPanelOpen(false);
+
+      expect(useViewStore.getState().detailPanelOpen).toBe(false);
+
+      setDetailPanelOpen(true);
+      expect(useViewStore.getState().detailPanelOpen).toBe(true);
+    });
+
+    it("opening a different task updates selectedTaskId", () => {
+      const { openTaskDetail } = useViewStore.getState();
+
+      openTaskDetail("task-1");
+      openTaskDetail("task-2");
+
+      expect(useViewStore.getState().selectedTaskId).toBe("task-2");
+    });
+  });
+
   describe("persistence", () => {
     it("persists visible columns to localStorage", () => {
       const { toggleColumnVisibility } = useViewStore.getState();

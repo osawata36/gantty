@@ -4,6 +4,7 @@ import { ja } from "date-fns/locale";
 import { ChevronRight, ChevronDown, CalendarDays, Calendar, Hash, Link2, Link, Unlink, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/projectStore";
+import { useViewStore } from "@/stores/viewStore";
 import { DependencyArrows } from "./DependencyArrows";
 import {
   getDateRange,
@@ -64,6 +65,7 @@ export function GanttView() {
   const collapsedTaskIds = useProjectStore((state) => state.collapsedTaskIds);
 
   const addDependency = useProjectStore((state) => state.addDependency);
+  const openTaskDetail = useViewStore((state) => state.openTaskDetail);
 
   const [scale, setScale] = useState<ScaleType>("day");
   const [mode, setMode] = useState<GanttMode>("date");
@@ -819,6 +821,7 @@ export function GanttView() {
                     displayEndDate={displayEndDate}
                     isDragging={isDragging}
                     onDragStart={handleDragStart}
+                    onClick={openTaskDetail}
                     mode={mode}
                     relativeSchedule={relativeSchedule}
                     onConnectionStart={handleConnectionStart}
@@ -900,6 +903,7 @@ interface TaskBarProps {
     originalStartDate: string | undefined,
     originalEndDate: string | undefined
   ) => void;
+  onClick: (taskId: string) => void;
   mode: GanttMode;
   relativeSchedule: { relativeStart: number; duration: number } | undefined;
   onConnectionStart: (taskId: string, startX: number, startY: number) => void;
@@ -918,6 +922,7 @@ function TaskBar({
   displayEndDate,
   isDragging,
   onDragStart,
+  onClick,
   mode,
   relativeSchedule,
   onConnectionStart,
@@ -926,6 +931,7 @@ function TaskBar({
   taskFloat,
 }: TaskBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Calculate position based on mode
   const position = mode === "relative"
@@ -943,7 +949,10 @@ function TaskBar({
         dayWidth
       );
 
+  const dragStartedRef = useRef(false);
+
   const handleMouseDown = (e: React.MouseEvent) => {
+    dragStartedRef.current = false;
     // Disable drag in relative mode
     if (mode === "relative") return;
     if (!barRef.current || !position) return;
@@ -954,6 +963,7 @@ function TaskBar({
     const dragType = getDragType(relativeX, 0, position.width);
     if (dragType) {
       e.preventDefault();
+      dragStartedRef.current = true;
       onDragStart(
         task.id,
         dragType,
@@ -962,6 +972,15 @@ function TaskBar({
         task.endDate
       );
     }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    // Only open detail panel if it wasn't a drag operation
+    if (!dragStartedRef.current) {
+      e.stopPropagation();
+      onClick(task.id);
+    }
+    dragStartedRef.current = false;
   };
 
   // Determine cursor based on position
@@ -1030,6 +1049,9 @@ function TaskBar({
         cursor: isDragging ? "grabbing" : "grab",
       }}
       onMouseDown={handleMouseDown}
+      onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onMouseMove={(e) => {
         if (!isDragging && barRef.current) {
           barRef.current.style.cursor = getCursor(e);
@@ -1047,9 +1069,30 @@ function TaskBar({
       <span className="absolute inset-0 flex items-center px-2 pr-6 text-xs text-primary-foreground truncate pointer-events-none">
         {task.name}
       </span>
-      {/* Resize handles */}
-      <div className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize" />
-      <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize" />
+      {/* Resize handles - visible on hover */}
+      {isHovered && (
+        <>
+          <div
+            data-testid={`resize-handle-left-${index}`}
+            className="absolute left-0 top-0 bottom-0 w-2 bg-primary/60 rounded-l cursor-ew-resize"
+            style={{ cursor: "ew-resize" }}
+          />
+          <div
+            data-testid={`resize-handle-right-${index}`}
+            className="absolute right-0 top-0 bottom-0 w-2 bg-primary/60 rounded-r cursor-ew-resize"
+            style={{ cursor: "ew-resize" }}
+          />
+        </>
+      )}
+      {/* Drag tooltip - shows dates during drag */}
+      {isDragging && displayStartDate && displayEndDate && (
+        <div
+          data-testid={`drag-tooltip-${index}`}
+          className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-popover text-popover-foreground border rounded shadow-md text-xs whitespace-nowrap z-20"
+        >
+          {format(new Date(displayStartDate), "M/d", { locale: ja })} - {format(new Date(displayEndDate), "M/d", { locale: ja })}
+        </div>
+      )}
       {/* Connection handle */}
       <div
         className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-orange-500 border-2 border-white shadow cursor-crosshair hover:scale-125 transition-transform flex items-center justify-center z-10"

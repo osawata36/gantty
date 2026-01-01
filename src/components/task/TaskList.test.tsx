@@ -282,6 +282,33 @@ describe("TaskList", () => {
       expect(childTask?.parentId).toBe(parentTaskId);
     });
 
+    it("循環参照になるドロップは視覚的に警告される", () => {
+      // 親タスクを子タスクの下にドロップしようとした場合
+      useProjectStore.getState().addTask("親タスク");
+      const parentTaskId = useProjectStore.getState().project?.tasks[0].id!;
+      useProjectStore.getState().addSubTask(parentTaskId, "子タスク");
+
+      render(<TaskList />);
+
+      const parentTask = screen.getByTestId("task-item-0");
+      const childDropZone = screen.getByTestId("task-dropzone-1");
+
+      // Start dragging parent task
+      fireEvent.dragStart(parentTask, {
+        dataTransfer: { setData: () => {}, getData: () => parentTaskId },
+      });
+
+      // Drag over child task
+      fireEvent.dragOver(childDropZone, {
+        dataTransfer: { getData: () => parentTaskId },
+      });
+
+      // The drop zone should show warning (red indicator)
+      // We check that the invalid-drop class or similar indicator is present
+      const dropZoneParent = childDropZone.closest("li");
+      expect(dropZoneParent).toHaveClass("ring-destructive");
+    });
+
     it("タスクをルートにドロップすると親タスクが解除される", () => {
       useProjectStore.getState().addTask("親タスク");
       const parentTaskId = useProjectStore.getState().project?.tasks[0].id!;
@@ -367,6 +394,99 @@ describe("TaskList", () => {
 
       const outdentButton = screen.getByLabelText("階層を上げる");
       expect(outdentButton).toBeDisabled();
+    });
+  });
+
+  describe("サブタスク追加のインライン入力", () => {
+    it("サブタスク追加ボタンをクリックすると親タスクの直下に入力フィールドが表示される", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("親タスク");
+
+      render(<TaskList />);
+
+      // サブタスク追加ボタンをクリック
+      await user.click(screen.getByLabelText("サブタスクを追加"));
+
+      // 入力フィールドが表示される
+      const input = screen.getByPlaceholderText("サブタスク名を入力");
+      expect(input).toBeInTheDocument();
+
+      // 入力フィールドは親タスクの後に表示される（インライン入力フィールドのdata-testid）
+      const inlineInput = screen.getByTestId("inline-subtask-input");
+      expect(inlineInput).toBeInTheDocument();
+    });
+
+    it("Enterキーでサブタスクが追加される", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("親タスク");
+
+      render(<TaskList />);
+
+      await user.click(screen.getByLabelText("サブタスクを追加"));
+      const input = screen.getByPlaceholderText("サブタスク名を入力");
+      await user.type(input, "新しいサブタスク");
+      await user.keyboard("{Enter}");
+
+      // サブタスクが追加される
+      expect(screen.getByText("新しいサブタスク")).toBeInTheDocument();
+    });
+
+    it("Escapeキーで入力がキャンセルされる", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("親タスク");
+
+      render(<TaskList />);
+
+      await user.click(screen.getByLabelText("サブタスクを追加"));
+      const input = screen.getByPlaceholderText("サブタスク名を入力");
+      await user.type(input, "キャンセルされるサブタスク");
+      await user.keyboard("{Escape}");
+
+      // 入力フィールドが消える
+      expect(screen.queryByPlaceholderText("サブタスク名を入力")).not.toBeInTheDocument();
+      // サブタスクは追加されない
+      expect(screen.queryByText("キャンセルされるサブタスク")).not.toBeInTheDocument();
+    });
+
+    it("追加後も入力フィールドが残り連続追加できる", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("親タスク");
+
+      render(<TaskList />);
+
+      await user.click(screen.getByLabelText("サブタスクを追加"));
+      const input = screen.getByPlaceholderText("サブタスク名を入力");
+
+      // 1つ目のサブタスクを追加
+      await user.type(input, "サブタスク1");
+      await user.keyboard("{Enter}");
+
+      // 入力フィールドがまだ表示されている
+      const inputAfterAdd = screen.getByPlaceholderText("サブタスク名を入力");
+      expect(inputAfterAdd).toBeInTheDocument();
+      expect(inputAfterAdd).toHaveValue("");
+
+      // 2つ目のサブタスクを追加
+      await user.type(inputAfterAdd, "サブタスク2");
+      await user.keyboard("{Enter}");
+
+      // 両方のサブタスクが表示される
+      expect(screen.getByText("サブタスク1")).toBeInTheDocument();
+      expect(screen.getByText("サブタスク2")).toBeInTheDocument();
+    });
+
+    it("空のEnterで入力フィールドが閉じる", async () => {
+      const user = userEvent.setup();
+      useProjectStore.getState().addTask("親タスク");
+
+      render(<TaskList />);
+
+      await user.click(screen.getByLabelText("サブタスクを追加"));
+      const input = screen.getByPlaceholderText("サブタスク名を入力");
+      await user.keyboard("{Enter}");
+
+      // 入力フィールドが消える
+      expect(screen.queryByPlaceholderText("サブタスク名を入力")).not.toBeInTheDocument();
     });
   });
 

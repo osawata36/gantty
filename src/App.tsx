@@ -16,6 +16,7 @@ import { ViewSwitcher } from "@/components/layout/ViewSwitcher";
 import { Button } from "@/components/ui/button";
 import { NewProjectDialog } from "@/components/project/NewProjectDialog";
 import { TaskList } from "@/components/task/TaskList";
+import { TaskDetailPanel } from "@/components/task/TaskDetailPanel";
 import { GanttView } from "@/components/gantt/GanttView";
 import { KanbanView } from "@/components/kanban/KanbanView";
 import { NetworkView } from "@/components/network/NetworkView";
@@ -32,6 +33,9 @@ import "./index.css";
 
 function App() {
   const currentView = useViewStore((state) => state.currentView);
+  const selectedTaskId = useViewStore((state) => state.selectedTaskId);
+  const detailPanelOpen = useViewStore((state) => state.detailPanelOpen);
+  const setDetailPanelOpen = useViewStore((state) => state.setDetailPanelOpen);
   const project = useProjectStore((state) => state.project);
   const filePath = useProjectStore((state) => state.filePath);
   const isModified = useProjectStore((state) => state.isModified);
@@ -244,6 +248,12 @@ function App() {
       <StatusCustomizationDialog
         open={isStatusDialogOpen}
         onOpenChange={setIsStatusDialogOpen}
+      />
+
+      <TaskDetailPanel
+        taskId={selectedTaskId}
+        open={detailPanelOpen}
+        onOpenChange={setDetailPanelOpen}
       />
     </>
   );
