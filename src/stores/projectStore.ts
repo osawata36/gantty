@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { Project, Task, Resource, StatusConfig, TaskStatus, TaskDependency, DependencyType } from "@/types";
 import { DEFAULT_STATUSES } from "@/types";
 import type { FilterConfig } from "@/stores/viewStore";
+import { generateUUID } from "@/lib/uuid";
 
 interface ParentDates {
   startDate: string | undefined;
@@ -100,7 +101,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   createNewProject: (name: string) => {
     const now = new Date().toISOString();
     const project: Project = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       name,
       createdAt: now,
       updatedAt: now,
@@ -115,7 +116,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   createDefaultProject: () => {
     const now = new Date().toISOString();
     const project: Project = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       name: "無題のプロジェクト",
       createdAt: now,
       updatedAt: now,
@@ -160,7 +161,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     if (!project) return;
 
     const newTask: Task = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       name,
       progress: 0,
       status: "not_started",
@@ -185,7 +186,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     if (!parentTask) return;
 
     const newTask: Task = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       name,
       parentId,
       progress: 0,
@@ -563,7 +564,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
 
     const colorIndex = project.resources.length % RESOURCE_COLORS.length;
     const newResource: Resource = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       name,
       color: RESOURCE_COLORS[colorIndex],
       availability: 100,
@@ -878,7 +879,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     if (existingDep) return false;
 
     const newDependency: TaskDependency = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       predecessorId,
       successorId,
       type,

@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useHistoryStore } from "./historyStore";
 import type { Project } from "@/types";
+import { generateUUID } from "@/lib/uuid";
 
 function createTestProject(name: string): Project {
   return {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     name,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
