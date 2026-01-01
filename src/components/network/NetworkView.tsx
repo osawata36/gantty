@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useCallback, useEffect } from "react";
-import { ZoomIn, ZoomOut, RotateCcw, LayoutGrid, Link2 } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/projectStore";
 import { useViewStore } from "@/stores/viewStore";

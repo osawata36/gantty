@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { useProjectStore } from "@/stores/projectStore";
 import { serializeProject } from "@/lib/fileUtils";
+import { saveToIndexedDB } from "@/lib/browserStorage";
 
 export type SaveStatus = "saved" | "modified" | "saving";
 
@@ -15,7 +15,6 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
   const { delayMs = DEFAULT_DELAY_MS } = options;
 
   const project = useProjectStore((state) => state.project);
-  const filePath = useProjectStore((state) => state.filePath);
   const isModified = useProjectStore((state) => state.isModified);
   const markAsSaved = useProjectStore((state) => state.markAsSaved);
 
@@ -33,7 +32,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
   }, [isModified]);
 
   const performSave = useCallback(async () => {
-    if (!project || !filePath) {
+    if (!project) {
       return false;
     }
 
@@ -41,7 +40,8 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
 
     try {
       const content = serializeProject(project);
-      await writeTextFile(filePath, content);
+      // Save to IndexedDB for browser-based auto-save
+      await saveToIndexedDB(content);
       markAsSaved();
       setSaveStatus("saved");
       return true;
@@ -50,7 +50,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
       setSaveStatus("modified");
       return false;
     }
-  }, [project, filePath, markAsSaved]);
+  }, [project, markAsSaved]);
 
   // Set up auto save timer
   useEffect(() => {
@@ -60,8 +60,9 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
       timerRef.current = null;
     }
 
-    // Don't schedule if disabled, not modified, or no file path
-    if (!isAutoSaveEnabled || !isModified || !filePath) {
+    // Don't schedule if disabled or not modified
+    // Note: In browser mode, we always auto-save to IndexedDB (no filePath check needed)
+    if (!isAutoSaveEnabled || !isModified) {
       return;
     }
 
@@ -76,7 +77,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}) {
         timerRef.current = null;
       }
     };
-  }, [isAutoSaveEnabled, isModified, filePath, delayMs, performSave]);
+  }, [isAutoSaveEnabled, isModified, delayMs, performSave]);
 
   const toggleAutoSave = useCallback(() => {
     setIsAutoSaveEnabled((prev) => !prev);

@@ -3,14 +3,11 @@ import { renderHook, act } from "@testing-library/react";
 import { useAutoSave } from "./useAutoSave";
 import { useProjectStore } from "@/stores/projectStore";
 
-// Mock Tauri APIs
-vi.mock("@tauri-apps/plugin-fs", () => ({
-  writeTextFile: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  save: vi.fn(),
-  open: vi.fn(),
+// Mock IndexedDB storage
+vi.mock("@/lib/browserStorage", () => ({
+  saveToIndexedDB: vi.fn().mockResolvedValue(undefined),
+  loadFromIndexedDB: vi.fn().mockResolvedValue(null),
+  clearIndexedDB: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("useAutoSave", () => {
@@ -94,22 +91,8 @@ describe("useAutoSave", () => {
       expect(saveResult).toBe(false);
     });
 
-    it("returns false if no file path", async () => {
+    it("saves successfully with project (no file path needed for browser)", async () => {
       useProjectStore.getState().createNewProject("テストプロジェクト");
-
-      const { result } = renderHook(() => useAutoSave());
-
-      let saveResult: boolean = false;
-      await act(async () => {
-        saveResult = await result.current.performSave();
-      });
-
-      expect(saveResult).toBe(false);
-    });
-
-    it("saves successfully with project and file path", async () => {
-      useProjectStore.getState().createNewProject("テストプロジェクト");
-      useProjectStore.getState().setFilePath("/test/path.gantty");
 
       const { result, rerender } = renderHook(() => useAutoSave());
 

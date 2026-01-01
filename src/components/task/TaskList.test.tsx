@@ -482,7 +482,7 @@ describe("TaskList", () => {
       render(<TaskList />);
 
       await user.click(screen.getByLabelText("サブタスクを追加"));
-      const input = screen.getByPlaceholderText("サブタスク名を入力");
+      expect(screen.getByPlaceholderText("サブタスク名を入力")).toBeInTheDocument();
       await user.keyboard("{Enter}");
 
       // 入力フィールドが消える

@@ -356,7 +356,8 @@ describe("GanttView", () => {
     it("ドラッグ中にタスクバーのツールチップに変更後の日付が表示される", async () => {
       render(<GanttView />);
 
-      const taskBar = screen.getByTestId("gantt-task-bar-0");
+      // タスクバーが存在することを確認
+      expect(screen.getByTestId("gantt-task-bar-0")).toBeInTheDocument();
 
       // タスクバーにドラッグ中の日付表示用のdata属性があることを確認
       // 通常状態ではドラッグ日付ツールチップは表示されない

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NetworkView } from "./NetworkView";
 import { useProjectStore } from "@/stores/projectStore";
@@ -96,9 +96,10 @@ describe("NetworkView", () => {
     });
 
     it("ラグがある場合、ラベルに表示される", () => {
-      const tasks = useProjectStore.getState().project!.tasks;
-      const deps = useProjectStore.getState().project!.dependencies;
-      useProjectStore.getState().updateDependency(deps[0].id, { lag: 2 });
+      const deps = useProjectStore.getState().project?.dependencies ?? [];
+      if (deps.length > 0) {
+        useProjectStore.getState().updateDependency(deps[0].id, { lag: 2 });
+      }
 
       render(<NetworkView />);
 

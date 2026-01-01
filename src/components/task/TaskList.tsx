@@ -233,19 +233,6 @@ export function TaskList() {
     }
   };
 
-  const handleAddTask = () => {
-    const trimmedName = newTaskName.trim();
-    if (trimmedName) {
-      if (addingParentId) {
-        addSubTask(addingParentId, trimmedName);
-      } else {
-        addTask(trimmedName);
-      }
-      setNewTaskName("");
-      setAddingParentId(null);
-    }
-  };
-
   const handleStartEditing = (taskId: string, currentName: string) => {
     editCancelledRef.current = false;
     setEditing({ taskId, value: currentName });
@@ -359,7 +346,9 @@ export function TaskList() {
         } else {
           setDragOverPosition("child");
           // Check for circular reference when dropping as child
-          setIsInvalidDrop(wouldCauseCircularReference(draggedTaskId, targetTaskId));
+          if (draggedTaskId) {
+            setIsInvalidDrop(wouldCauseCircularReference(draggedTaskId, targetTaskId));
+          }
         }
       }
     },
