@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "Gantty"
   text: "シンプルで強力な WBS・ガントチャートエディタ"
-  tagline: プロジェクト計画を視覚的に管理
+  tagline: 🤖 このプロジェクトはAIエージェント（Claude Code）の学習・検証目的で作成されています
   image:
     src: /images/05_gantt_view.png
     alt: Gantty ガントチャートビュー
@@ -30,6 +30,10 @@ features:
     title: ネットワーク図
     details: タスク間の依存関係を可視化。クリティカルパスを把握できます。
 ---
+
+::: warning ⚠️ 学習目的のプロジェクトです
+このアプリケーションは、AIエージェント（Claude Code）によるソフトウェア開発の学習・検証を目的として作成されています。実際のプロジェクト管理での使用は想定していません。
+:::
 
 ## クイックスタート
 

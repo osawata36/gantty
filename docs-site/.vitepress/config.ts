@@ -64,8 +64,8 @@ export default defineConfig({
     ],
 
     footer: {
-      message: 'Released under the MIT License.',
-      copyright: 'Copyright 2024'
+      message: '🤖 このプロジェクトはAIエージェント（Claude Code）の学習・検証目的で作成されています',
+      copyright: 'MIT License | Built with Claude Code'
     },
 
     docFooter: {
