@@ -11,6 +11,11 @@ import type { WbsNodePosition } from "@/lib/wbsLayout";
 
 type ViewMode = "dependency" | "wbs";
 
+// Touch gesture constants
+const DOUBLE_TAP_DELAY = 300;
+const LONG_PRESS_DELAY = 400;
+const TAP_MOVE_THRESHOLD = 10;
+
 export function NetworkView() {
   const project = useProjectStore((s) => s.project);
   const openTaskDetail = useViewStore((s) => s.openTaskDetail);
@@ -29,9 +34,19 @@ export function NetworkView() {
   const [editingName, setEditingName] = useState("");
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Touch gesture state per node
+  const gestureStateRef = useRef<Map<string, {
+    startX: number;
+    startY: number;
+    startTime: number;
+    lastTapTime: number;
+    longPressTimer: ReturnType<typeof setTimeout> | null;
+  }>>(new Map());
 
   const handleZoomIn = useCallback(() => {
     setZoomLevel((prev) => Math.min(prev + 25, 200));
@@ -48,12 +63,10 @@ export function NetworkView() {
   const tasks = project?.tasks ?? [];
   const dependencies = project?.dependencies ?? [];
 
-  // Dependency layout
   const dependencyLayout = useMemo(() => {
     return calculateNetworkLayout(tasks, dependencies);
   }, [tasks, dependencies]);
 
-  // WBS layout
   const wbsLayout = useMemo(() => {
     return calculateWbsLayout(tasks, collapsedIds);
   }, [tasks, collapsedIds]);
@@ -68,12 +81,21 @@ export function NetworkView() {
     return map;
   }, [tasks]);
 
-  const handleNodeClick = useCallback((taskId: string) => {
+  // Check if target is a descendant of parent
+  const isDescendant = useCallback((parentId: string, childId: string): boolean => {
+    const child = taskMap.get(childId);
+    if (!child) return false;
+    if (child.parentId === parentId) return true;
+    if (child.parentId) return isDescendant(parentId, child.parentId);
+    return false;
+  }, [taskMap]);
+
+  const handleNodeSelect = useCallback((taskId: string) => {
     setSelectedTaskId((prev) => (prev === taskId ? null : taskId));
     setSelectedEdgeId(null);
   }, []);
 
-  const handleNodeDoubleClick = useCallback((taskId: string, taskName: string) => {
+  const handleNodeEdit = useCallback((taskId: string, taskName: string) => {
     setEditingTaskId(taskId);
     setEditingName(taskName);
   }, []);
@@ -83,8 +105,7 @@ export function NetworkView() {
     setSelectedTaskId(null);
   }, []);
 
-  const handleToggleCollapse = useCallback((taskId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggleCollapse = useCallback((taskId: string) => {
     setCollapsedIds((prev) => {
       const next = new Set(prev);
       if (next.has(taskId)) {
@@ -96,10 +117,8 @@ export function NetworkView() {
     });
   }, []);
 
-  const handleAddChild = useCallback((parentId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleAddChild = useCallback((parentId: string) => {
     addSubTask(parentId, "新しいタスク");
-    // Expand parent if collapsed
     setCollapsedIds((prev) => {
       const next = new Set(prev);
       next.delete(parentId);
@@ -124,56 +143,156 @@ export function NetworkView() {
     }
   }, [handleNameEditSubmit]);
 
-  // Pointer-based drag and drop for reparenting
-  const handlePointerDown = useCallback((taskId: string, e: React.PointerEvent) => {
-    // Only start drag on left click
-    if (e.button !== 0) return;
-    setDraggedTaskId(taskId);
+  // Touch-friendly pointer handlers for WBS nodes
+  const handleNodePointerDown = useCallback((taskId: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+
+    const state = gestureStateRef.current.get(taskId) || {
+      startX: 0,
+      startY: 0,
+      startTime: 0,
+      lastTapTime: 0,
+      longPressTimer: null,
+    };
+
+    // Clear any existing timer
+    if (state.longPressTimer) {
+      clearTimeout(state.longPressTimer);
+    }
+
+    state.startX = e.clientX;
+    state.startY = e.clientY;
+    state.startTime = Date.now();
+
+    // Set up long press for drag
+    state.longPressTimer = setTimeout(() => {
+      setDraggedTaskId(taskId);
+      setIsDragging(true);
+      // Visual feedback - vibrate on supported devices
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }, LONG_PRESS_DELAY);
+
+    gestureStateRef.current.set(taskId, state);
+
+    // Show hover state on touch
+    setHoveredTaskId(taskId);
   }, []);
 
-  const handlePointerUp = useCallback((targetId: string) => {
-    if (draggedTaskId && draggedTaskId !== targetId) {
-      // Check if target is not a descendant of dragged task
-      const isDescendant = (parentId: string, childId: string): boolean => {
-        const child = taskMap.get(childId);
-        if (!child) return false;
-        if (child.parentId === parentId) return true;
-        if (child.parentId) return isDescendant(parentId, child.parentId);
-        return false;
-      };
+  const handleNodePointerMove = useCallback((taskId: string, e: React.PointerEvent) => {
+    const state = gestureStateRef.current.get(taskId);
+    if (!state) return;
 
-      if (!isDescendant(draggedTaskId, targetId)) {
-        moveTask(draggedTaskId, targetId);
+    const deltaX = e.clientX - state.startX;
+    const deltaY = e.clientY - state.startY;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // Cancel long press if moved too much before it triggered
+    if (distance > TAP_MOVE_THRESHOLD && state.longPressTimer && !isDragging) {
+      clearTimeout(state.longPressTimer);
+      state.longPressTimer = null;
+    }
+
+    // Update drop target while dragging
+    if (isDragging && draggedTaskId) {
+      // Find element under pointer
+      const elementsUnderPointer = document.elementsFromPoint(e.clientX, e.clientY);
+      const nodeElement = elementsUnderPointer.find(el => el.getAttribute('data-task-id'));
+      const targetId = nodeElement?.getAttribute('data-task-id');
+
+      if (targetId && targetId !== draggedTaskId && !isDescendant(draggedTaskId, targetId)) {
+        setDropTargetId(targetId);
+      } else {
+        setDropTargetId(null);
       }
+    }
+  }, [isDragging, draggedTaskId, isDescendant]);
+
+  const handleNodePointerUp = useCallback((taskId: string, e: React.PointerEvent) => {
+    const state = gestureStateRef.current.get(taskId);
+    if (!state) return;
+
+    // Clear long press timer
+    if (state.longPressTimer) {
+      clearTimeout(state.longPressTimer);
+      state.longPressTimer = null;
+    }
+
+    const deltaX = e.clientX - state.startX;
+    const deltaY = e.clientY - state.startY;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const duration = Date.now() - state.startTime;
+
+    if (isDragging && draggedTaskId) {
+      // Complete drag operation
+      if (dropTargetId && dropTargetId !== draggedTaskId) {
+        moveTask(draggedTaskId, dropTargetId);
+      }
+      setDraggedTaskId(null);
+      setDropTargetId(null);
+      setIsDragging(false);
+    } else if (distance < TAP_MOVE_THRESHOLD && duration < LONG_PRESS_DELAY) {
+      // Tap or double-tap
+      const timeSinceLastTap = Date.now() - state.lastTapTime;
+
+      if (timeSinceLastTap < DOUBLE_TAP_DELAY && timeSinceLastTap > 50) {
+        // Double tap - edit name
+        const task = taskMap.get(taskId);
+        if (task) {
+          handleNodeEdit(taskId, task.name);
+        }
+        state.lastTapTime = 0;
+      } else {
+        // Single tap - select
+        state.lastTapTime = Date.now();
+        handleNodeSelect(taskId);
+      }
+    }
+
+    gestureStateRef.current.set(taskId, state);
+  }, [isDragging, draggedTaskId, dropTargetId, moveTask, taskMap, handleNodeEdit, handleNodeSelect]);
+
+  const handleNodePointerCancel = useCallback((taskId: string) => {
+    const state = gestureStateRef.current.get(taskId);
+    if (state?.longPressTimer) {
+      clearTimeout(state.longPressTimer);
+      state.longPressTimer = null;
     }
     setDraggedTaskId(null);
     setDropTargetId(null);
-  }, [draggedTaskId, moveTask, taskMap]);
+    setIsDragging(false);
+  }, []);
 
-  // Track hover target while dragging
-  const handleNodeHover = useCallback((taskId: string | null) => {
-    setHoveredTaskId(taskId);
-    if (draggedTaskId && taskId && taskId !== draggedTaskId) {
-      setDropTargetId(taskId);
-    } else {
-      setDropTargetId(null);
+  // Handle pointer enter (for mouse hover)
+  const handleNodePointerEnter = useCallback((taskId: string) => {
+    if (!isDragging) {
+      setHoveredTaskId(taskId);
     }
-  }, [draggedTaskId]);
+  }, [isDragging]);
 
-  // Cancel drag on mouse up anywhere
+  // Handle pointer leave (mouse only, touch doesn't trigger this reliably)
+  const handleNodePointerLeave = useCallback((taskId: string) => {
+    if (!isDragging) {
+      setHoveredTaskId(null);
+    }
+  }, [isDragging]);
+
+  // Global pointer up handler for drag cancellation
   useEffect(() => {
     const handleGlobalPointerUp = () => {
-      if (draggedTaskId) {
+      if (isDragging) {
         setDraggedTaskId(null);
         setDropTargetId(null);
+        setIsDragging(false);
       }
     };
 
     window.addEventListener("pointerup", handleGlobalPointerUp);
     return () => window.removeEventListener("pointerup", handleGlobalPointerUp);
-  }, [draggedTaskId]);
+  }, [isDragging]);
 
-  // Handle Delete key to remove selected edge
+  // Handle Delete key for edges
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Delete" && selectedEdgeId && viewMode === "dependency") {
@@ -213,16 +332,16 @@ export function NetworkView() {
   const scaleFactor = zoomLevel / 100;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col touch-none">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 p-2 bg-background border-b">
+      <div className="flex items-center gap-2 p-2 bg-background border-b flex-wrap">
         {/* View mode toggle */}
         <div className="flex rounded-md border">
           <Button
             variant={viewMode === "wbs" ? "default" : "ghost"}
             size="sm"
             onClick={() => setViewMode("wbs")}
-            className="rounded-r-none"
+            className="rounded-r-none min-h-[44px] min-w-[60px]"
             title="WBS階層ビュー"
           >
             <GitBranch className="h-4 w-4 mr-1" />
@@ -232,7 +351,7 @@ export function NetworkView() {
             variant={viewMode === "dependency" ? "default" : "ghost"}
             size="sm"
             onClick={() => setViewMode("dependency")}
-            className="rounded-l-none"
+            className="rounded-l-none min-h-[44px] min-w-[60px]"
             title="依存関係ビュー"
           >
             <Network className="h-4 w-4 mr-1" />
@@ -242,15 +361,16 @@ export function NetworkView() {
 
         <div className="h-4 w-px bg-border mx-2" />
 
-        {/* Zoom controls */}
+        {/* Zoom controls - larger touch targets */}
         <Button
           variant="outline"
           size="sm"
           onClick={handleZoomIn}
           aria-label="ズームイン"
           title="ズームイン"
+          className="min-h-[44px] min-w-[44px]"
         >
-          <ZoomIn className="h-4 w-4" />
+          <ZoomIn className="h-5 w-5" />
         </Button>
         <Button
           variant="outline"
@@ -258,8 +378,9 @@ export function NetworkView() {
           onClick={handleZoomOut}
           aria-label="ズームアウト"
           title="ズームアウト"
+          className="min-h-[44px] min-w-[44px]"
         >
-          <ZoomOut className="h-4 w-4" />
+          <ZoomOut className="h-5 w-5" />
         </Button>
         <Button
           variant="outline"
@@ -267,23 +388,35 @@ export function NetworkView() {
           onClick={handleZoomReset}
           aria-label="リセット"
           title="ズームをリセット"
+          className="min-h-[44px] min-w-[44px]"
         >
-          <RotateCcw className="h-4 w-4" />
+          <RotateCcw className="h-5 w-5" />
         </Button>
         <span className="text-sm text-muted-foreground ml-2">{zoomLevel}%</span>
 
         {viewMode === "wbs" && (
           <>
-            <div className="h-4 w-px bg-border mx-2" />
-            <span className="text-xs text-muted-foreground">
-              ドラッグ&ドロップで親子関係を変更 • ダブルクリックで名前編集 • +で子タスク追加
+            <div className="h-4 w-px bg-border mx-2 hidden sm:block" />
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              タップで選択 • ダブルタップで編集 • 長押し+ドラッグで移動 • +で子追加
             </span>
           </>
         )}
       </div>
 
+      {/* Drag indicator */}
+      {isDragging && (
+        <div className="bg-primary/10 text-primary text-sm px-4 py-2 text-center">
+          ドラッグ中... 移動先のノードにドロップしてください
+        </div>
+      )}
+
       {/* Canvas */}
-      <div ref={containerRef} className="flex-1 overflow-auto bg-muted/20 p-4">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-auto bg-muted/20 p-4"
+        style={{ touchAction: "pan-x pan-y" }}
+      >
         <svg
           width={layout.width * scaleFactor}
           height={layout.height * scaleFactor}
@@ -323,9 +456,7 @@ export function NetworkView() {
             </defs>
 
             {viewMode === "dependency" ? (
-              // Dependency view
               <>
-                {/* Edges */}
                 {dependencyLayout.edges.map((edge) => {
                   const isHighlighted =
                     hoveredTaskId === edge.sourceId ||
@@ -368,7 +499,6 @@ export function NetworkView() {
                   );
                 })}
 
-                {/* Nodes */}
                 {dependencyLayout.nodes.map((node, index) => (
                   <DependencyNode
                     key={node.taskId}
@@ -377,20 +507,15 @@ export function NetworkView() {
                     task={taskMap.get(node.taskId)!}
                     isSelected={selectedTaskId === node.taskId}
                     isHovered={hoveredTaskId === node.taskId}
-                    onClick={() => handleNodeClick(node.taskId)}
-                    onDoubleClick={() => {
-                      const task = taskMap.get(node.taskId);
-                      if (task) openTaskDetail(node.taskId);
-                    }}
-                    onMouseEnter={() => setHoveredTaskId(node.taskId)}
-                    onMouseLeave={() => setHoveredTaskId(null)}
+                    onPointerDown={(e) => handleNodePointerDown(node.taskId, e)}
+                    onPointerUp={(e) => handleNodePointerUp(node.taskId, e)}
+                    onPointerEnter={() => handleNodePointerEnter(node.taskId)}
+                    onPointerLeave={() => handleNodePointerLeave(node.taskId)}
                   />
                 ))}
               </>
             ) : (
-              // WBS view
               <>
-                {/* Edges */}
                 {wbsLayout.edges.map((edge) => (
                   <path
                     key={edge.id}
@@ -402,30 +527,25 @@ export function NetworkView() {
                   />
                 ))}
 
-                {/* Nodes */}
-                {wbsLayout.nodes.map((node, index) => (
+                {wbsLayout.nodes.map((node) => (
                   <WbsNode
                     key={node.taskId}
-                    index={index}
                     node={node}
                     task={taskMap.get(node.taskId)!}
                     isSelected={selectedTaskId === node.taskId}
                     isHovered={hoveredTaskId === node.taskId}
                     isDraggedOver={dropTargetId === node.taskId}
+                    isBeingDragged={draggedTaskId === node.taskId}
                     isEditing={editingTaskId === node.taskId}
                     editingName={editingName}
                     inputRef={editingTaskId === node.taskId ? inputRef : undefined}
-                    onClick={() => handleNodeClick(node.taskId)}
-                    onDoubleClick={() => {
-                      const task = taskMap.get(node.taskId);
-                      if (task) handleNodeDoubleClick(node.taskId, task.name);
-                    }}
-                    onMouseEnter={() => handleNodeHover(node.taskId)}
-                    onMouseLeave={() => handleNodeHover(null)}
-                    onToggleCollapse={(e) => handleToggleCollapse(node.taskId, e)}
-                    onAddChild={(e) => handleAddChild(node.taskId, e)}
-                    onPointerDown={(e) => handlePointerDown(node.taskId, e)}
-                    onPointerUp={() => handlePointerUp(node.taskId)}
+                    onPointerDown={(e) => handleNodePointerDown(node.taskId, e)}
+                    onPointerMove={(e) => handleNodePointerMove(node.taskId, e)}
+                    onPointerUp={(e) => handleNodePointerUp(node.taskId, e)}
+                    onPointerCancel={() => handleNodePointerCancel(node.taskId)}
+                    onPointerLeave={() => handleNodePointerLeave(node.taskId)}
+                    onToggleCollapse={() => handleToggleCollapse(node.taskId)}
+                    onAddChild={() => handleAddChild(node.taskId)}
                     onNameChange={setEditingName}
                     onNameSubmit={handleNameEditSubmit}
                     onNameKeyDown={handleNameEditKeyDown}
@@ -452,10 +572,10 @@ interface DependencyNodeProps {
   };
   isSelected: boolean;
   isHovered: boolean;
-  onClick: () => void;
-  onDoubleClick: () => void;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
+  onPointerDown: (e: React.PointerEvent) => void;
+  onPointerUp: (e: React.PointerEvent) => void;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
 }
 
 function DependencyNode({
@@ -464,10 +584,10 @@ function DependencyNode({
   task,
   isSelected,
   isHovered,
-  onClick,
-  onDoubleClick,
-  onMouseEnter,
-  onMouseLeave,
+  onPointerDown,
+  onPointerUp,
+  onPointerEnter,
+  onPointerLeave,
 }: DependencyNodeProps) {
   const statusColors: Record<string, string> = {
     not_started: "fill-gray-100 stroke-gray-300",
@@ -482,10 +602,11 @@ function DependencyNode({
   return (
     <g
       className="cursor-pointer"
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      data-task-id={task.id}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
     >
       <rect
         x={node.x}
@@ -505,7 +626,7 @@ function DependencyNode({
       <text
         x={node.x + node.width / 2}
         y={node.y + 24}
-        className="fill-foreground text-sm font-medium"
+        className="fill-foreground text-sm font-medium pointer-events-none"
         textAnchor="middle"
         dominantBaseline="middle"
       >
@@ -514,7 +635,7 @@ function DependencyNode({
       <text
         x={node.x + node.width / 2}
         y={node.y + 44}
-        className="fill-muted-foreground text-xs"
+        className="fill-muted-foreground text-xs pointer-events-none"
         textAnchor="middle"
         dominantBaseline="middle"
       >
@@ -533,9 +654,8 @@ function DependencyNode({
   );
 }
 
-// WBS view node
+// WBS view node with touch support
 interface WbsNodeProps {
-  index: number;
   node: WbsNodePosition;
   task: {
     id: string;
@@ -546,17 +666,17 @@ interface WbsNodeProps {
   isSelected: boolean;
   isHovered: boolean;
   isDraggedOver: boolean;
+  isBeingDragged: boolean;
   isEditing: boolean;
   editingName: string;
   inputRef?: React.RefObject<HTMLInputElement | null>;
-  onClick: () => void;
-  onDoubleClick: () => void;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
-  onToggleCollapse: (e: React.MouseEvent) => void;
-  onAddChild: (e: React.MouseEvent) => void;
   onPointerDown: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
   onPointerUp: (e: React.PointerEvent) => void;
+  onPointerCancel: () => void;
+  onPointerLeave: () => void;
+  onToggleCollapse: () => void;
+  onAddChild: () => void;
   onNameChange: (name: string) => void;
   onNameSubmit: () => void;
   onNameKeyDown: (e: React.KeyboardEvent) => void;
@@ -568,17 +688,17 @@ function WbsNode({
   isSelected,
   isHovered,
   isDraggedOver,
+  isBeingDragged,
   isEditing,
   editingName,
   inputRef,
-  onClick,
-  onDoubleClick,
-  onMouseEnter,
-  onMouseLeave,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onPointerLeave,
   onToggleCollapse,
   onAddChild,
-  onPointerDown,
-  onPointerUp,
   onNameChange,
   onNameSubmit,
   onNameKeyDown,
@@ -594,17 +714,41 @@ function WbsNode({
   const colorClass = statusColors[task.status] ?? statusColors.not_started;
   const hasChildren = node.childCount > 0 || node.isCollapsed;
 
+  // Handle button tap separately to prevent event propagation issues
+  const handleCollapseTap = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    onToggleCollapse();
+  };
+
+  const handleAddChildTap = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    onAddChild();
+  };
+
   return (
     <g
-      className="cursor-grab active:cursor-grabbing"
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      className={cn(
+        "touch-none",
+        isBeingDragged && "opacity-50"
+      )}
+      data-task-id={task.id}
       onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
     >
-      {/* Node background */}
+      {/* Node background - larger touch target */}
+      <rect
+        x={node.x - 4}
+        y={node.y - 4}
+        width={node.width + 8}
+        height={node.height + 8}
+        rx={12}
+        ry={12}
+        fill="transparent"
+        className="pointer-events-auto"
+      />
       <rect
         x={node.x}
         y={node.y}
@@ -617,37 +761,44 @@ function WbsNode({
           "transition-all",
           isSelected && "stroke-primary stroke-2",
           isHovered && !isSelected && "stroke-primary/50",
-          isDraggedOver && "stroke-green-500 stroke-2 fill-green-50"
+          isDraggedOver && "stroke-green-500 stroke-3 fill-green-50",
+          isBeingDragged && "stroke-primary stroke-2"
         )}
-        strokeWidth={isSelected || isDraggedOver ? 2 : 1.5}
+        strokeWidth={isSelected || isDraggedOver || isBeingDragged ? 2.5 : 1.5}
       />
 
-      {/* Collapse/expand button (for tasks with children) */}
+      {/* Collapse/expand button - larger touch target */}
       {hasChildren && (
         <g
           className="cursor-pointer"
-          onClick={onToggleCollapse}
+          onPointerUp={handleCollapseTap}
         >
           <circle
-            cx={node.x + 16}
+            cx={node.x + 18}
             cy={node.y + node.height / 2}
-            r={10}
+            r={14}
+            fill="transparent"
+          />
+          <circle
+            cx={node.x + 18}
+            cy={node.y + node.height / 2}
+            r={11}
             className="fill-white stroke-gray-300"
-            strokeWidth={1}
+            strokeWidth={1.5}
           />
           {node.isCollapsed ? (
             <path
-              d={`M ${node.x + 12} ${node.y + node.height / 2} L ${node.x + 20} ${node.y + node.height / 2} M ${node.x + 16} ${node.y + node.height / 2 - 4} L ${node.x + 16} ${node.y + node.height / 2 + 4}`}
+              d={`M ${node.x + 13} ${node.y + node.height / 2} L ${node.x + 23} ${node.y + node.height / 2} M ${node.x + 18} ${node.y + node.height / 2 - 5} L ${node.x + 18} ${node.y + node.height / 2 + 5}`}
               stroke="currentColor"
-              strokeWidth={2}
-              className="text-gray-500"
+              strokeWidth={2.5}
+              className="text-gray-500 pointer-events-none"
             />
           ) : (
             <path
-              d={`M ${node.x + 12} ${node.y + node.height / 2} L ${node.x + 20} ${node.y + node.height / 2}`}
+              d={`M ${node.x + 13} ${node.y + node.height / 2} L ${node.x + 23} ${node.y + node.height / 2}`}
               stroke="currentColor"
-              strokeWidth={2}
-              className="text-gray-500"
+              strokeWidth={2.5}
+              className="text-gray-500 pointer-events-none"
             />
           )}
         </g>
@@ -656,9 +807,9 @@ function WbsNode({
       {/* Task name */}
       {isEditing ? (
         <foreignObject
-          x={node.x + (hasChildren ? 28 : 8)}
+          x={node.x + (hasChildren ? 32 : 8)}
           y={node.y + 8}
-          width={node.width - (hasChildren ? 36 : 16)}
+          width={node.width - (hasChildren ? 40 : 16) - (isHovered ? 28 : 0)}
           height={node.height - 16}
         >
           <input
@@ -669,37 +820,45 @@ function WbsNode({
             onBlur={onNameSubmit}
             onKeyDown={onNameKeyDown}
             className="w-full h-full px-2 text-sm bg-white border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+            style={{ touchAction: "manipulation" }}
           />
         </foreignObject>
       ) : (
         <text
-          x={node.x + (hasChildren ? 28 : 8) + (node.width - (hasChildren ? 36 : 16)) / 2}
+          x={node.x + (hasChildren ? 32 : 8) + (node.width - (hasChildren ? 40 : 16) - (isHovered ? 28 : 0)) / 2}
           y={node.y + node.height / 2}
-          className="fill-foreground text-sm font-medium pointer-events-none"
+          className="fill-foreground text-sm font-medium pointer-events-none select-none"
           textAnchor="middle"
           dominantBaseline="middle"
         >
-          {truncateText(task.name, 14)}
+          {truncateText(task.name, 12)}
         </text>
       )}
 
-      {/* Add child button (shown on hover) */}
-      {isHovered && !isEditing && (
+      {/* Add child button - always visible on touch, hover on desktop */}
+      {(isHovered || isSelected) && !isEditing && (
         <g
           className="cursor-pointer"
-          onClick={onAddChild}
+          onPointerUp={handleAddChildTap}
         >
           <circle
-            cx={node.x + node.width - 16}
+            cx={node.x + node.width - 18}
             cy={node.y + node.height / 2}
-            r={10}
+            r={14}
+            fill="transparent"
+          />
+          <circle
+            cx={node.x + node.width - 18}
+            cy={node.y + node.height / 2}
+            r={11}
             className="fill-primary stroke-white"
             strokeWidth={2}
           />
           <path
-            d={`M ${node.x + node.width - 20} ${node.y + node.height / 2} L ${node.x + node.width - 12} ${node.y + node.height / 2} M ${node.x + node.width - 16} ${node.y + node.height / 2 - 4} L ${node.x + node.width - 16} ${node.y + node.height / 2 + 4}`}
+            d={`M ${node.x + node.width - 23} ${node.y + node.height / 2} L ${node.x + node.width - 13} ${node.y + node.height / 2} M ${node.x + node.width - 18} ${node.y + node.height / 2 - 5} L ${node.x + node.width - 18} ${node.y + node.height / 2 + 5}`}
             stroke="white"
-            strokeWidth={2}
+            strokeWidth={2.5}
+            className="pointer-events-none"
           />
         </g>
       )}
@@ -708,11 +867,11 @@ function WbsNode({
       {node.isCollapsed && (
         <text
           x={node.x + node.width / 2}
-          y={node.y + node.height - 8}
-          className="fill-muted-foreground text-[10px]"
+          y={node.y + node.height - 6}
+          className="fill-muted-foreground text-[9px] pointer-events-none"
           textAnchor="middle"
         >
-          (折りたたみ中)
+          ({node.childCount}件)
         </text>
       )}
     </g>

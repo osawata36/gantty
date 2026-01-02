@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NetworkView } from "./NetworkView";
 import { useProjectStore } from "@/stores/projectStore";
@@ -47,35 +47,54 @@ describe("NetworkView", () => {
       expect(screen.getByText("子タスク")).toBeInTheDocument();
     });
 
-    it("ノードをダブルクリックすると名前編集モードになる", async () => {
-      const user = userEvent.setup();
+    it("ノードをダブルタップすると名前編集モードになる", async () => {
+      // Date.now()をモックして、タップ間隔をシミュレート
+      let currentTime = 1000;
+      const originalDateNow = Date.now;
+      Date.now = vi.fn(() => currentTime);
+
+      const user = userEvent.setup({ delay: null });
       render(<NetworkView />);
 
-      const taskNode = screen.getByText("親タスク").closest("g");
-      await user.dblClick(taskNode!);
+      // タスクノードのrect要素を取得（ポインターイベントを受け取る）
+      const taskNode = screen.getByText("親タスク").closest("g")!;
+
+      // 1回目のタップ
+      await user.click(taskNode);
+
+      // 100ms経過（50ms以上300ms未満）
+      currentTime += 100;
+
+      // 2回目のタップ
+      await user.click(taskNode);
 
       // 入力フィールドが表示される
       const input = screen.getByRole("textbox");
       expect(input).toBeInTheDocument();
       expect(input).toHaveValue("親タスク");
+
+      // Date.now()を元に戻す
+      Date.now = originalDateNow;
     });
 
-    it("ホバー時に子タスク追加ボタンが表示される", async () => {
+    it("選択時に子タスク追加ボタンが表示される", async () => {
       const user = userEvent.setup();
       render(<NetworkView />);
 
-      const taskNode = screen.getByText("親タスク").closest("g");
-      await user.hover(taskNode!);
+      const taskNode = screen.getByText("親タスク").closest("g")!;
+
+      // タップで選択
+      await user.click(taskNode);
 
       // +ボタンのcircleが表示される（primary色）
-      const circles = taskNode?.querySelectorAll("circle.fill-primary");
-      expect(circles?.length).toBeGreaterThan(0);
+      const circles = taskNode.querySelectorAll("circle.fill-primary");
+      expect(circles.length).toBeGreaterThan(0);
     });
 
     it("操作説明がツールバーに表示される", () => {
       render(<NetworkView />);
 
-      expect(screen.getByText(/ドラッグ&ドロップで親子関係を変更/)).toBeInTheDocument();
+      expect(screen.getByText(/タップで選択.*ダブルタップで編集/)).toBeInTheDocument();
     });
   });
 
