@@ -5,6 +5,7 @@ export type ViewType = "list" | "gantt" | "kanban" | "network";
 
 export type ColumnId =
   | "name"
+  | "duration"
   | "startDate"
   | "endDate"
   | "progress"
@@ -32,6 +33,7 @@ const DEFAULT_FILTERS: FilterConfig = {
 
 const DEFAULT_COLUMN_ORDER: ColumnId[] = [
   "name",
+  "duration",
   "startDate",
   "endDate",
   "progress",
@@ -41,6 +43,7 @@ const DEFAULT_COLUMN_ORDER: ColumnId[] = [
 
 const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
   "name",
+  "duration",
   "startDate",
   "endDate",
   "progress",

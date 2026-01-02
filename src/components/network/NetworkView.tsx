@@ -2,7 +2,6 @@ import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { ZoomIn, ZoomOut, RotateCcw, GitBranch, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/projectStore";
-import { useViewStore } from "@/stores/viewStore";
 import { calculateNetworkLayout, createEdgePath } from "@/lib/networkLayout";
 import { calculateWbsLayout, createWbsEdgePath } from "@/lib/wbsLayout";
 import { cn } from "@/lib/utils";
@@ -18,7 +17,6 @@ const TAP_MOVE_THRESHOLD = 10;
 
 export function NetworkView() {
   const project = useProjectStore((s) => s.project);
-  const openTaskDetail = useViewStore((s) => s.openTaskDetail);
   const deleteDependency = useProjectStore((s) => s.deleteDependency);
   const addSubTask = useProjectStore((s) => s.addSubTask);
   const updateTask = useProjectStore((s) => s.updateTask);
@@ -272,7 +270,7 @@ export function NetworkView() {
   }, [isDragging]);
 
   // Handle pointer leave (mouse only, touch doesn't trigger this reliably)
-  const handleNodePointerLeave = useCallback((taskId: string) => {
+  const handleNodePointerLeave = useCallback((_taskId: string) => {
     if (!isDragging) {
       setHoveredTaskId(null);
     }

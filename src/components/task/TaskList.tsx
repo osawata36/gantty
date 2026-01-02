@@ -27,6 +27,11 @@ interface EditingState {
   value: string;
 }
 
+interface EditingDurationState {
+  taskId: string;
+  value: string;
+}
+
 interface TreeTask extends Task {
   depth: number;
   hasChildren: boolean;
@@ -124,8 +129,10 @@ export function TaskList() {
   const [addingParentId, setAddingParentId] = useState<string | null>(null);
   const [newTaskName, setNewTaskName] = useState("");
   const [editing, setEditing] = useState<EditingState | null>(null);
+  const [editingDuration, setEditingDuration] = useState<EditingDurationState | null>(null);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const editCancelledRef = useRef(false);
+  const durationEditCancelledRef = useRef(false);
 
   // Check if any filters are active
   const hasActiveFilters =
@@ -179,6 +186,8 @@ export function TaskList() {
       switch (column) {
         case "name":
           return task.name.toLowerCase();
+        case "duration":
+          return task.duration ?? 0;
         case "startDate":
           return task.startDate || "";
         case "endDate":
@@ -263,6 +272,41 @@ export function TaskList() {
         updateTask(editing.taskId, { name: trimmedValue });
       }
       setEditing(null);
+    }
+  };
+
+  // Duration editing handlers
+  const handleStartEditingDuration = (taskId: string, currentDuration: number | undefined) => {
+    durationEditCancelledRef.current = false;
+    setEditingDuration({ taskId, value: String(currentDuration ?? "") });
+  };
+
+  const handleDurationKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSaveDuration(e.currentTarget.value);
+    } else if (e.key === "Escape") {
+      durationEditCancelledRef.current = true;
+      e.currentTarget.blur();
+      setEditingDuration(null);
+    }
+  };
+
+  const handleDurationBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    handleSaveDuration(e.currentTarget.value);
+  };
+
+  const handleSaveDuration = (value: string) => {
+    if (durationEditCancelledRef.current) {
+      durationEditCancelledRef.current = false;
+      return;
+    }
+    if (editingDuration) {
+      const trimmedValue = value.trim();
+      const numValue = parseInt(trimmedValue, 10);
+      if (!isNaN(numValue) && numValue >= 0) {
+        updateTask(editingDuration.taskId, { duration: numValue });
+      }
+      setEditingDuration(null);
     }
   };
 
@@ -492,6 +536,11 @@ export function TaskList() {
         <div className="flex-1 min-w-0">
           <SortButton columnId="name" label={COLUMN_LABELS.name} />
         </div>
+        {isColumnVisible("duration") && (
+          <div className="w-16 text-center">
+            <SortButton columnId="duration" label={COLUMN_LABELS.duration} />
+          </div>
+        )}
         {isColumnVisible("startDate") && (
           <div className="w-24 text-center">
             <SortButton columnId="startDate" label={COLUMN_LABELS.startDate} />
@@ -587,6 +636,38 @@ export function TaskList() {
                 >
                   {highlightMatch(task.name)}
                 </span>
+              )}
+
+              {/* 日数表示・編集 */}
+              {isColumnVisible("duration") && (
+                <div className="w-16 text-center">
+                  {editingDuration?.taskId === task.id ? (
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editingDuration.value}
+                      onChange={(e) =>
+                        setEditingDuration({ ...editingDuration, value: e.target.value })
+                      }
+                      onKeyDown={handleDurationKeyDown}
+                      onBlur={handleDurationBlur}
+                      onClick={(e) => e.stopPropagation()}
+                      autoFocus
+                      className="w-14 h-6 text-xs text-center px-1"
+                    />
+                  ) : (
+                    <span
+                      className="text-xs text-muted-foreground cursor-pointer hover:text-primary"
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        handleStartEditingDuration(task.id, task.duration);
+                      }}
+                      title="ダブルクリックで編集"
+                    >
+                      {task.duration != null ? `${task.duration}日` : "-"}
+                    </span>
+                  )}
+                </div>
               )}
 
               {/* 開始日表示 */}

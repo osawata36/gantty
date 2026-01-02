@@ -12,6 +12,7 @@ import { useViewStore, ColumnId } from "@/stores/viewStore";
 
 export const COLUMN_LABELS: Record<ColumnId, string> = {
   name: "タスク名",
+  duration: "日数",
   startDate: "開始日",
   endDate: "終了日",
   progress: "進捗",

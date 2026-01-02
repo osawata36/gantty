@@ -46,6 +46,7 @@ describe("viewStore", () => {
       const state = useViewStore.getState();
       expect(state.columnOrder).toEqual([
         "name",
+        "duration",
         "startDate",
         "endDate",
         "progress",
