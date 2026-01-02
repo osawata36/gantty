@@ -1002,6 +1002,8 @@ function TaskBar({
   }
 
   const barPadding = 4;
+  const summaryBarHeight = 6;
+  const triangleSize = 8;
 
   const handleConnectionHandleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1032,6 +1034,103 @@ function TaskBar({
     ? "ring-2 ring-red-400"
     : "";
 
+  // Summary bar style for parent tasks (tasks with children)
+  if (task.hasChildren) {
+    const summaryColor = isCritical ? "#ef4444" : "#374151"; // red-500 or gray-700
+
+    return (
+      <div
+        ref={barRef}
+        data-testid={`gantt-task-bar-${index}`}
+        data-task-id={task.id}
+        data-critical={isCritical ? "true" : undefined}
+        data-parent="true"
+        className="absolute select-none"
+        style={{
+          left: position.left,
+          top: index * rowHeight,
+          width: position.width,
+          height: rowHeight,
+          cursor: isDragging ? "grabbing" : "grab",
+        }}
+        onMouseDown={handleMouseDown}
+        onClick={handleClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        title={isCritical ? `クリティカルパス（余裕: 0日）` : taskFloat !== undefined ? `余裕: ${taskFloat}日` : undefined}
+      >
+        {/* Summary bar with SVG for triangles */}
+        <svg
+          className="absolute pointer-events-none"
+          style={{
+            left: 0,
+            top: (rowHeight - summaryBarHeight) / 2 - triangleSize / 2,
+            width: position.width,
+            height: summaryBarHeight + triangleSize,
+          }}
+        >
+          {/* Main bar */}
+          <rect
+            x={triangleSize / 2}
+            y={triangleSize / 2}
+            width={Math.max(0, position.width - triangleSize)}
+            height={summaryBarHeight}
+            fill={summaryColor}
+          />
+          {/* Progress fill */}
+          <rect
+            x={triangleSize / 2}
+            y={triangleSize / 2}
+            width={Math.max(0, (position.width - triangleSize) * (task.progress / 100))}
+            height={summaryBarHeight}
+            fill={isCritical ? "#dc2626" : "#1f2937"}
+          />
+          {/* Left triangle */}
+          <polygon
+            points={`0,${triangleSize / 2} ${triangleSize},${triangleSize / 2} ${triangleSize / 2},${triangleSize / 2 + summaryBarHeight + triangleSize / 2}`}
+            fill={summaryColor}
+          />
+          {/* Right triangle */}
+          <polygon
+            points={`${position.width - triangleSize},${triangleSize / 2} ${position.width},${triangleSize / 2} ${position.width - triangleSize / 2},${triangleSize / 2 + summaryBarHeight + triangleSize / 2}`}
+            fill={summaryColor}
+          />
+        </svg>
+        {/* Task name above bar */}
+        <span
+          className="absolute text-xs truncate pointer-events-none"
+          style={{
+            left: 4,
+            top: 2,
+            right: 20,
+            color: isCritical ? "#dc2626" : "#374151",
+            fontWeight: 500,
+          }}
+        >
+          {task.name}
+        </span>
+        {/* Drag tooltip - shows dates during drag */}
+        {isDragging && displayStartDate && displayEndDate && (
+          <div
+            data-testid={`drag-tooltip-${index}`}
+            className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-popover text-popover-foreground border rounded shadow-md text-xs whitespace-nowrap z-20"
+          >
+            {format(new Date(displayStartDate), "M/d", { locale: ja })} - {format(new Date(displayEndDate), "M/d", { locale: ja })}
+          </div>
+        )}
+        {/* Connection handle */}
+        <div
+          className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-orange-500 border-2 border-white shadow cursor-crosshair hover:scale-125 transition-transform flex items-center justify-center z-10"
+          onMouseDown={handleConnectionHandleMouseDown}
+          title="ドラッグして依存関係を作成"
+        >
+          <Link2 className="w-2.5 h-2.5 text-white" />
+        </div>
+      </div>
+    );
+  }
+
+  // Regular bar style for leaf tasks (no children)
   return (
     <div
       ref={barRef}
