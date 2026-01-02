@@ -53,6 +53,7 @@ export function TaskList() {
   const collapsedTaskIds = useProjectStore((state) => state.collapsedTaskIds);
   const getParentProgress = useProjectStore((state) => state.getParentProgress);
   const getParentDates = useProjectStore((state) => state.getParentDates);
+  const getParentDuration = useProjectStore((state) => state.getParentDuration);
   const moveTask = useProjectStore((state) => state.moveTask);
   const indentTask = useProjectStore((state) => state.indentTask);
   const outdentTask = useProjectStore((state) => state.outdentTask);
@@ -187,7 +188,7 @@ export function TaskList() {
         case "name":
           return task.name.toLowerCase();
         case "duration":
-          return task.duration ?? 0;
+          return task.hasChildren ? (getParentDuration(task.id) ?? 0) : (task.duration ?? 0);
         case "startDate":
           return task.startDate || "";
         case "endDate":
@@ -641,7 +642,18 @@ export function TaskList() {
               {/* 日数表示・編集 */}
               {isColumnVisible("duration") && (
                 <div className="w-16 text-center">
-                  {editingDuration?.taskId === task.id ? (
+                  {task.hasChildren ? (
+                    // 親タスクは子タスクから自動算出（編集不可）
+                    <span
+                      className="text-xs text-muted-foreground"
+                      title="子タスクの合計"
+                    >
+                      {(() => {
+                        const parentDuration = getParentDuration(task.id);
+                        return parentDuration != null ? `${parentDuration}日` : "-";
+                      })()}
+                    </span>
+                  ) : editingDuration?.taskId === task.id ? (
                     <Input
                       type="number"
                       min="0"

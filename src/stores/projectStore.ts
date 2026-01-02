@@ -60,6 +60,7 @@ interface ProjectState {
   // Task Calculations
   getParentDates: (taskId: string) => ParentDates;
   getParentProgress: (taskId: string) => number;
+  getParentDuration: (taskId: string) => number | undefined;
 
   // Resource Actions
   addResource: (name: string) => void;
@@ -555,6 +556,37 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
       }
       return Math.round(totalProgress / children.length);
     }
+  },
+
+  getParentDuration: (taskId: string): number | undefined => {
+    const { project, getParentDuration } = get();
+    if (!project) return undefined;
+
+    // Find direct children of this task
+    const children = project.tasks.filter((t) => t.parentId === taskId);
+    if (children.length === 0) {
+      return undefined;
+    }
+
+    // Sum up all child durations (including nested children)
+    let totalDuration = 0;
+    for (const child of children) {
+      const childChildren = project.tasks.filter((t) => t.parentId === child.id);
+      if (childChildren.length > 0) {
+        // Recursively get duration of nested parent
+        const childDuration = getParentDuration(child.id);
+        if (childDuration != null) {
+          totalDuration += childDuration;
+        }
+      } else {
+        // Leaf task - use its duration
+        if (child.duration != null) {
+          totalDuration += child.duration;
+        }
+      }
+    }
+
+    return totalDuration > 0 ? totalDuration : undefined;
   },
 
   // Resource Actions

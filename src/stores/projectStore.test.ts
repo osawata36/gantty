@@ -701,6 +701,86 @@ describe("projectStore", () => {
           expect(grandparentProgress).toBe(50);
         });
       });
+
+      describe("getParentDuration", () => {
+        it("calculates parent duration as sum of child durations", () => {
+          const { addTask, addSubTask, updateTask } =
+            useProjectStore.getState();
+          addTask("Parent");
+          const parentId = useProjectStore.getState().project?.tasks[0].id!;
+          addSubTask(parentId, "Child 1");
+          addSubTask(parentId, "Child 2");
+
+          const state = useProjectStore.getState();
+          const child1Id = state.project?.tasks.find(
+            (t) => t.name === "Child 1"
+          )?.id!;
+          const child2Id = state.project?.tasks.find(
+            (t) => t.name === "Child 2"
+          )?.id!;
+
+          updateTask(child1Id, { duration: 5 });
+          updateTask(child2Id, { duration: 3 });
+
+          const duration = useProjectStore.getState().getParentDuration(parentId);
+          expect(duration).toBe(8);
+        });
+
+        it("returns undefined if task has no children", () => {
+          const { addTask } = useProjectStore.getState();
+          addTask("Task");
+          const taskId = useProjectStore.getState().project?.tasks[0].id!;
+
+          const duration = useProjectStore.getState().getParentDuration(taskId);
+          expect(duration).toBeUndefined();
+        });
+
+        it("returns undefined if no children have duration", () => {
+          const { addTask, addSubTask } = useProjectStore.getState();
+          addTask("Parent");
+          const parentId = useProjectStore.getState().project?.tasks[0].id!;
+          addSubTask(parentId, "Child 1");
+
+          const duration = useProjectStore.getState().getParentDuration(parentId);
+          expect(duration).toBeUndefined();
+        });
+
+        it("handles nested children for duration calculation", () => {
+          const { addTask, addSubTask, updateTask } =
+            useProjectStore.getState();
+          addTask("Grandparent");
+          const grandparentId = useProjectStore.getState().project?.tasks[0].id!;
+          addSubTask(grandparentId, "Parent");
+
+          const state1 = useProjectStore.getState();
+          const parentId = state1.project?.tasks.find(
+            (t) => t.name === "Parent"
+          )?.id!;
+          addSubTask(parentId, "Child 1");
+          addSubTask(parentId, "Child 2");
+
+          const state2 = useProjectStore.getState();
+          const child1Id = state2.project?.tasks.find(
+            (t) => t.name === "Child 1"
+          )?.id!;
+          const child2Id = state2.project?.tasks.find(
+            (t) => t.name === "Child 2"
+          )?.id!;
+
+          updateTask(child1Id, { duration: 5 });
+          updateTask(child2Id, { duration: 3 });
+
+          // Parent's duration should be sum of children
+          const parentDuration = useProjectStore.getState().getParentDuration(parentId);
+          expect(parentDuration).toBe(8);
+
+          // Grandparent's duration should be based on Parent's calculated duration
+          const grandparentDuration = useProjectStore
+            .getState()
+            .getParentDuration(grandparentId);
+          expect(grandparentDuration).toBe(8);
+        });
+      });
     });
 
     describe("task collapse/expand", () => {
